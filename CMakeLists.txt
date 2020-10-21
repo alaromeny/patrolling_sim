@@ -59,6 +59,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_service_files(
    FILES
    GoToStartPosSrv.srv
+   DeactivateRobotSrv.srv
 )
 
 ## Generate actions in the 'action' folder
@@ -116,9 +117,21 @@ add_library(SSIPatrolAgent
 )
 
 ## Declare a cpp executable
+add_executable(MQTTBroker src/MQTTBroker.cpp)
+## Specify libraries to link a library or executable target against
+target_link_libraries(MQTTBroker ${catkin_LIBRARIES})
+
+
+## Declare a cpp executable
+add_executable(Exploring_Vertex_Ant_Walk src/Exploring_Vertex_Ant_Walk_Agent.cpp)
+## Specify libraries to link a library or executable target against
+target_link_libraries(Exploring_Vertex_Ant_Walk PatrolAgent ${catkin_LIBRARIES})
+ 
+## Declare a cpp executable
 add_executable(Conscientious_Reactive src/Conscientious_Reactive_Agent.cpp)
 ## Specify libraries to link a library or executable target against
 target_link_libraries(Conscientious_Reactive PatrolAgent ${catkin_LIBRARIES})
+ 
  
 ## Declare a cpp executable
 add_executable(Heuristic_Conscientious_Reactive src/Heuristic_Conscientious_Reactive_Agent.cpp)

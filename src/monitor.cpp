@@ -92,6 +92,7 @@ uint teamsize;
 bool init_robots[NUM_MAX_ROBOTS];
 double last_goal_reached[NUM_MAX_ROBOTS];
 
+
 // mutex for accessing last_goal_reached vector
 pthread_mutex_t lock_last_goal_reached;
 
@@ -114,6 +115,7 @@ double last_visit [MAX_DIMENSION], current_idleness [MAX_DIMENSION], avg_idlenes
 double total_0 [MAX_DIMENSION], total_1 [MAX_DIMENSION],  total_2[MAX_DIMENSION];
 int number_of_visits [MAX_DIMENSION];
 size_t dimension; // graph size
+vertex *vertex_web; //local copy of graph
 
 double worst_avg_idleness, avg_graph_idl, median_graph_idl, stddev_graph_idl, avg_stddev_graph_idl, previous_avg_graph_idl = DBL_MAX;
 // global measures
@@ -145,6 +147,45 @@ void dolog(const char *str) {
     fflush(logfile);
   }
 }
+
+
+void create_edge_list(uint dimension){
+
+  uint num_neigh;
+  for(int i=0; i<dimension; i++){
+    num_neigh = vertex_web[i].num_neigh;
+    for(int j=0; j<num_neigh;j++){
+      printf("from: %d, to %d\n", i, vertex_web[i].id_neigh[j]);
+    }
+  }
+}
+
+
+/*void update_graph_edge_availability(){
+
+}*/
+
+// int update_corresponding_edge(uint id_a, uint id_b, bool alive){
+ 
+//   uint num_neigh = vertex_web[id_b].num_neigh;
+//   for(int i=0;i<num_neigh;i++){
+  
+//     if(vertex_web[id_b].id_neigh[i] == id_a){
+//         vertex_web[id_b].alive[i] = alive;
+//         return 0;
+//     }
+
+//   }
+//   return -1;
+// }
+
+
+/*void broadcast_graph_changes(){
+
+  results_pub.publish(msg);
+  ros::spinOnce();
+
+}*/
 
 void update_stats(int id_robot, int goal);
 
@@ -192,6 +233,7 @@ void resultsCB(const std_msgs::Int16MultiArray::ConstPtr& msg)
                 
                 //Patch D.Portugal (needed to support other simulators besides Stage):
                 double current_time = ros::Time::now().toSec();
+                printf("current ROS time is! %f\n", current_time);
                 //initialize last_goal_reached:
                 set_last_goal_reached(id_robot,current_time);
                 
@@ -643,7 +685,7 @@ int main(int argc, char** argv){  //pass TEAMSIZE GRAPH ALGORITHM
 //     printf("teamsize: %u\n", teamsize);
   }
   
-  
+
   algorithm = string(argv[2]);
   printf("Algorithm: %s\n",algorithm.c_str());
   
@@ -662,7 +704,23 @@ int main(int argc, char** argv){  //pass TEAMSIZE GRAPH ALGORITHM
     abort();
   }
   printf("Dimension: %u\n",(uint)dimension);
+
+  vertex_web = new vertex[dimension];    
+  //Get the Graph info from the Graph File
+  //Saves graph into vertex_web from graph_file
+  GetGraphInfo(vertex_web, dimension, graph_file.c_str());
    
+  create_edge_list(dimension);
+
+  // printf("Printing Graph IDs\n");
+  // uint this_id;
+
+  // for (int k=0; k<dimension;k++){
+  //   this_id = vertex_web[k].id;
+  //   printf("Host name: %d\n",this_id);
+  // }
+
+
   char hostname[80];
     
   int r = gethostname(hostname,80);
@@ -763,6 +821,7 @@ int main(int argc, char** argv){  //pass TEAMSIZE GRAPH ALGORITHM
 #endif
     
   //Wait for all robots to connect! (Exchange msgs)
+  printf("Launching Monitor Node cpp");
   ros::init(argc, argv, "monitor");
   ros::NodeHandle nh;
   
@@ -790,7 +849,12 @@ int main(int argc, char** argv){  //pass TEAMSIZE GRAPH ALGORITHM
       ROS_WARN("/GotoStartPosSrv does not exist. Assuming robots are already at starting positions.");
   }
     
+  printf("Monitor While loops begins");
+  printf("ROS_ok() %d", ros::ok());
+
   double current_time = ros::Time::now().toSec();
+
+  printf("ROS_current time %f", current_time);
   
     // read parameters
     if (! ros::param::get("/goal_reached_wait", goal_reached_wait)) {
@@ -824,6 +888,8 @@ int main(int argc, char** argv){  //pass TEAMSIZE GRAPH ALGORITHM
 
 
 
+ 
+ 
   while( ros::ok() ){
     
     dolog("main loop - begin");

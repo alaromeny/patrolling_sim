@@ -68,6 +68,73 @@ uint random (uint current_vertex, vertex *vertex_web){
   return next_vertex;
 }
 
+uint exploring_vertex_ant_walk (uint current_vertex, vertex *vertex_web){
+
+  //number of neighbors of current vertex (number of existing possibilites)
+  uint num_neighs = vertex_web[current_vertex].num_neigh;
+  uint next_vertex;
+
+  float min_pheromone = 9999999.99;
+  
+  ROS_INFO("#Neighbor %d", num_neighs);
+
+  if (num_neighs > 1){
+    uint i, hits=0;
+    uint neighbors [num_neighs];
+    float decision_table [num_neighs];
+    uint possibilities[num_neighs];
+
+    //check the pheromone levels for all neighbours
+    ROS_INFO("Checking pheromone level");
+    ROS_INFO("Checking pheromone level");
+
+    for (i=0;i<num_neighs;i++){
+    //find the smallest one
+      neighbors[i] = vertex_web[current_vertex].id_neigh[i];
+      decision_table[i] = vertex_web[neighbors[i]].pheromone_t;
+      ROS_INFO("Vertex [%d] Pheromone level: %f", neighbors[i], decision_table[i]);
+
+      if (decision_table[i] < min_pheromone){
+        min_pheromone = decision_table[i];
+
+        hits=0;
+        possibilities[hits] = neighbors[i];
+      } else if(decision_table[i] == min_pheromone){
+        hits++;
+        possibilities[hits] = neighbors[i];
+      }
+
+    }
+    for(int j=0;j++;j<num_neighs){
+      ROS_INFO("EVAW [%d] is: %f",j, decision_table[j]);
+    }
+    
+    if(hits>0){ //more than one possibility (choose at random)
+      ROS_INFO("Multiple hits, choose one at random");
+
+      srand ( time(NULL) );
+      i = rand() % (hits+1) + 0;  //0, ... ,hits
+      next_vertex = possibilities [i];    // random vertex with min pheromone
+        
+    }else{
+      ROS_INFO("Single Minimum");
+      next_vertex = possibilities[hits];  //vertex with min pheromone
+    }
+    // set pheromone level to current rostopi /clock value
+
+    // return next_vertex
+    
+  } else{
+    ROS_INFO("Only one connected vertex");
+    next_vertex = vertex_web[current_vertex].id_neigh[0]; //only one possibility
+  }
+
+
+  ROS_INFO("Exploring_Vertex_Ant_Walk choice: %d",next_vertex);
+
+  return next_vertex;
+}
+
 
 uint conscientious_reactive (uint current_vertex, vertex *vertex_web, double *instantaneous_idleness){
 
@@ -90,16 +157,16 @@ uint conscientious_reactive (uint current_vertex, vertex *vertex_web, double *in
       
       //choose the one with maximum idleness:
       if (decision_table[i] > max_idleness){
-	max_idleness = decision_table[i];		//maximum idleness
+      	max_idleness = decision_table[i];		//maximum idleness
 
-	hits=0;
-	possibilities[hits] = neighbors[i];
-	
+      	hits=0;
+      	possibilities[hits] = neighbors[i];
+      	
       }else if(decision_table[i] == max_idleness){
-	hits ++;
-	possibilities[hits] = neighbors[i];
+      	hits ++;
+      	possibilities[hits] = neighbors[i];
       }
-    }      
+  }      
       
     if(hits>0){	//more than one possibility (choose at random)
       srand ( time(NULL) );
@@ -109,7 +176,7 @@ uint conscientious_reactive (uint current_vertex, vertex *vertex_web, double *in
       next_vertex = possibilities [i];		// random vertex with higher idleness
       	
       }else{
-	next_vertex = possibilities[hits];	//vertex with higher idleness
+        next_vertex = possibilities[hits];	//vertex with higher idleness
       }
     
   }else{
@@ -144,11 +211,11 @@ uint heuristic_conscientious_reactive (uint current_vertex, vertex *vertex_web, 
       neighbors[i] = vertex_web[current_vertex].id_neigh[i];		//neighbors table
 
       if (instantaneous_idleness [neighbors[i]] > max_idleness){
-	max_idleness = instantaneous_idleness [neighbors[i]];
+        max_idleness = instantaneous_idleness [neighbors[i]];
       }
       
       if (vertex_web[current_vertex].cost[i] > max_distance){
-	max_distance = vertex_web[current_vertex].cost[i];
+        max_distance = vertex_web[current_vertex].cost[i];
       }
       
       //printf ("idleness[%u] = %f\n",neighbors[i],instantaneous_idleness [neighbors[i]]);

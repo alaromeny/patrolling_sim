@@ -49,8 +49,12 @@
 
 #include "getgraph.h"
 
-#define NUM_MAX_ROBOTS 32
-#define INTERFERENCE_DISTANCE 2
+#define NUM_MAX_ROBOTS         32
+#define INTERFERENCE_DISTANCE  2
+#define MOTOR_FAILURE_THESHOLD 0 
+#define MOTOR_FAILURE_SETTING  1000000000000 
+#define TOTAL_ERROR_THRESHOLD  0
+#define TOTAL_ERROR_SETTING    1000000000000
 
 #include "message_types.h"
 
@@ -64,6 +68,11 @@ protected:
     int TEAMSIZE;
     int ID_ROBOT;
 
+    bool robot_active;
+    bool motor_failure;
+
+
+    //tables containing robot positions
     double xPos[NUM_MAX_ROBOTS]; //tabelas de posições (atençao ao index pro caso de 1 so robot)
     double yPos[NUM_MAX_ROBOTS]; //tabelas de posições (atençao ao index pro caso de 1 so robot)
 
@@ -113,12 +122,17 @@ public:
     void initialize_node();
     void readParams(); // read ROS parameters
     void update_idleness();  // local idleness
+    void update_pheromone(uint vertex_to_update);  // local idleness
     
     virtual void run();
     
     void getRobotPose(int robotid, float &x, float &y, float &theta);
     void odomCB(const nav_msgs::Odometry::ConstPtr& msg);
     
+    void sendFalseGoal();
+
+    void fakeGoalDoneCallback();
+
     void sendGoal(int next_vertex);
     void cancelGoal();
     
@@ -130,6 +144,7 @@ public:
     void send_goal_reached();
     bool check_interference (int ID_ROBOT);
     void do_interference_behavior();
+    void do_deactivation_behavior(float delay_time);
     void backup();
     
     void onGoalNotComplete(); // what to do when a goal has NOT been reached (aborted)

@@ -67,6 +67,8 @@ inline long double log2(const long double x);
 
 uint random (uint current_vertex, vertex *vertex_web);
 
+uint exploring_vertex_ant_walk (uint current_vertex, vertex *vertex_web);
+
 uint conscientious_reactive (uint current_vertex, vertex *vertex_web, double *instantaneous_idleness);
 
 uint heuristic_conscientious_reactive (uint current_vertex, vertex *vertex_web, double *instantaneous_idleness);

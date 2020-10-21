@@ -20,7 +20,6 @@ dirname = rospkg.RosPack().get_path('patrolling_sim')
 
 Alg_names = [ 
         [ 'RAND', 'Random' ],
-        [ 'EVAW', 'Exploring_Vertex_Ant_Walk' ],
         [ 'CR',   'Conscientious_Reactive' ],
         [ 'HCR',  'Heuristic_Conscientious_Reactive' ],
         [ 'HPCC', 'Conscientious_Cognitive' ],
@@ -55,8 +54,6 @@ COMMDELAY_DEFAULT = 0.0
 
 INITPOS_DEFAULT = "default"
 
-MQTTBroker = True
-
 # return long name of the algorithm
 def findAlgName(alg):
     r = 'None'
@@ -79,10 +76,8 @@ def loadInitPoses():
 
 # get ROS time from /clock topic
 def getROStime():
-    print 'checking clock topic'
     os.system("rostopic echo -n 1 /clock > rostime.txt")
     f = open(dirname+"/rostime.txt",'r')
-    print 'retrieving t from file'
     t = 0
     for line in f:
         if (line[2:6]=='secs'):
@@ -135,13 +130,12 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
     iposes = initPoses[scenario.lower()]
     print scenario,'   ',iposes
     
-    if (TERM == 'xterm'):
-        roscore_cmd = 'xterm -e roscore &'
-    else:
-        roscore_cmd = 'gnome-terminal -e "bash -c \'roscore\'" &'
-    print roscore_cmd
 
+    roscore_cmd = 'gnome-terminal -e "bash -c \'roscore\'" &'
+    print roscore_cmd
     os.system(roscore_cmd)
+
+    print 'setting rosparams'
     os.system('sleep 3')
     os.system('rosparam set /use_sim_time true')
     os.system("rosparam set /goal_reached_wait "+GWAIT)
@@ -150,37 +144,33 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
     os.system("rosparam set /navigation_module "+NAV_MODULE)
     os.system("rosparam set /initial_positions "+INITPOS)
 
+
+
     cmd = './setinitposes.py '+MAP+' "'+iposes+'"'
     os.system(cmd)
     print cmd    
     os.system('sleep 1')
 
+
+    print 'launching monitor node'
     cmd_monitor = 'rosrun patrolling_sim monitor '+MAP+' '+ALG_SHORT+' '+NROBOTS  
-    cmd_mqttbroker = 'rosrun patrolling_sim MQTTBroker ' +NROBOTS
+    print cmd_monitor
+    
     custom_stage = ''
     if (CUSTOM_STAGE=="true"):
       custom_stage = ' custom_stage:=true'
+    
+    print 'launching map` node'
     cmd_stage = 'roslaunch patrolling_sim map.launch map:='+MAP+custom_stage
-    # if (os.getenv('ROS_DISTRO')=='groovy'):
-        # cmd_stage = cmd_stage + " stage_pkg:=stage"
-    print cmd_monitor
-    print cmd_mqttbroker
+    if (os.getenv('ROS_DISTRO')=='groovy'):
+      cmd_stage = cmd_stage + " stage_pkg:=stage"
+    
     print cmd_stage
     if (TERM == 'xterm'):
         os.system('xterm -e  "'+cmd_monitor+'" &') 
-        os.system('xterm -e  "'+cmd_mqttbroker+'" &') 
         os.system('xterm -e  "'+cmd_stage+'" &')
     else: 
         os.system('gnome-terminal --tab -e  "bash -c \''+cmd_monitor+'\'" --tab -e "bash -c \''+cmd_stage+'\'" &')
-
-    
-    if (MQTTBroker):
-        if (TERM == 'xterm'):
-            os.system('xterm -e  "'+cmd_mqttbroker+'" &') 
-        else: 
-            os.system('gnome-terminal --tab -e  "bash -c \''+cmd_mqttbroker+'\'" &')
-    
-
     
     os.system('sleep 3')
     
@@ -207,11 +197,11 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
             os.system('xterm -e  "'+cmd+'" &')
             os.system('sleep 1')
         gcmd = gcmd + ' --tab -e "'+cmd+'" '
-    gcmd = gcmd + '&'
-    if (TERM == 'gnome-terminal'):
-        #print gcmd
+        gcmd = gcmd + '&'
+        if (TERM == 'gnome-terminal'):
+            print gcmd
         os.system(gcmd)
-    os.system('sleep 5')    
+        os.system('sleep 5')    
         
     # Start patrol behaviors
     gcmd = 'gnome-terminal '
@@ -225,16 +215,17 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
             now = datetime.datetime.now()
             dateString = now.strftime("%Y-%m-%d-%H:%M")
             #cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' > logs/'+ALG+'-'+dateString+'-robot'+str(i)+'.log \''
-            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' /results:=results_robot'+str(i)+'\''
+            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+'\''
         print cmd
         if (TERM == 'xterm'):
-          os.system('xterm -e  "'+cmd+'" &')
-          os.system('sleep 1')
+            os.system('xterm -e  "'+cmd+'" &')
+            os.system('sleep 1')
         gcmd = gcmd + ' --tab -e "'+cmd+'" '
-    gcmd = gcmd + '&'
-    if (TERM == 'gnome-terminal'):
-        #print gcmd
+        gcmd = gcmd + '&'
+        if (TERM == 'gnome-terminal'):
+            print gcmd
         os.system(gcmd)
+    
     os.system('sleep '+NROBOTS)
 
     print 'Stage simulator footprints and speedup'
@@ -247,16 +238,21 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
 
     print 'Experiment started at ',strinittime
     # wait for termination
-    run = True
-    while (run):
-        print 'preTime'
-        t = getROStime()
-        print t
-        # print 'postTime'
+    # run = True
+    # while (run):
+    #     print 'preTime'
+    #     t = getROStime()
+    #     print 'postTime'
+    #     print "Elapsed time: ",t," sec Timeout = ",TIMEOUT
+    #     if ((TIMEOUT>0 and t>TIMEOUT) or (not getSimulationRunning())):        
+    #         run = False;
+    #     os.system('sleep 1')
+
+    rospy.init_node('startExperiment', anonymous=True)
+    r = rospy.Rate(1) # 10hz
+    while not rospy.is_shutdown():
         print "Elapsed time: ",t," sec Timeout = ",TIMEOUT
-        if ((TIMEOUT>0 and t>TIMEOUT) or (not getSimulationRunning())):        
-            run = False;
-        os.system('sleep 1')
+        r.sleep()
 
     #print "Taking a screenshot..."
     #os.system('rostopic pub /stageGUIRequest std_msgs/String "data: \'screenshot\'"  --once')

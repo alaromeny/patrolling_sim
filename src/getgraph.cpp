@@ -75,6 +75,7 @@ uint GetGraphDimension (const char* graph_file){
 }
 
 
+
 void GetGraphInfo (vertex *vertex_web, uint dimension, const char* graph_file){
    
    FILE *file;
@@ -110,6 +111,7 @@ void GetGraphInfo (vertex *vertex_web, uint dimension, const char* graph_file){
 	r=fscanf (file, "%u", &vertex_web[i].num_neigh);
 	
 	for (j=0;j<vertex_web[i].num_neigh; j++){
+    vertex_web[i].pheromone_t = -1.0;
 	  r=fscanf (file, "%u", &vertex_web[i].id_neigh[j]);
 	  r=fscanf (file, "%s", &vertex_web[i].dir[j]);
 	  r=fscanf (file, "%u", &vertex_web[i].cost[j]);	//can eventually be converted to meters also...

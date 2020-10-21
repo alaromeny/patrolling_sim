@@ -32,52 +32,55 @@
 *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 *  POSSIBILITY OF SUCH DAMAGE.
 *
-* Author: Luca Iocchi (2014-2016)
+* Author: David Portugal (2011-2014), and Luca Iocchi (2014-2016)
 *********************************************************************/
 
 #include <sstream>
-#include <string>
 #include <ros/ros.h>
 #include <move_base_msgs/MoveBaseAction.h>
 #include <actionlib/client/simple_action_client.h>
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
 #include <nav_msgs/Odometry.h>
-#include <std_msgs/Int8MultiArray.h>
 
 #include "PatrolAgent.h"
+#include "algorithms.h"
 
-class Random_Agent: public PatrolAgent {
+
+
+class Exploring_Vertex_Ant_Walk_Agent: public PatrolAgent {
     
 public:
     virtual int compute_next_vertex();
-    
+    //virtual void send_results();
+    //virtual void receive_results();    
 };
 
 
-int Random_Agent::compute_next_vertex() {
-    // Random algorithm
-    
-    //number of neighbors of current vertex (number of existing possibilites)
-    uint num_neighs = vertex_web[current_vertex].num_neigh;
-    uint next_vertex;
-    
-    srand ( time(NULL) );
-    int i = rand() % num_neighs;
-    next_vertex = vertex_web[current_vertex].id_neigh[i];
-    
-    ROS_INFO("Random choice: %d",next_vertex);
-    
-    return next_vertex;    
+
+int Exploring_Vertex_Ant_Walk_Agent::compute_next_vertex() {
+  return exploring_vertex_ant_walk (current_vertex, vertex_web);
 }
 
-int main(int argc, char** argv) {
+#if 0
+// FIXME Not needed at all, right?
+void Conscientious_Reactive_Agent::send_results() {
+  ros::spinOnce();    
+}
 
-    ROS_INFO("Creating Random Agent!");
+void Conscientious_Reactive_Agent::receive_results() {
+  ros::spinOnce();   
+}
+#endif
+
+int main(int argc, char** argv) {
   
-    Random_Agent agent;
+    ROS_INFO("Creating EVAW Agent");
+
+    Exploring_Vertex_Ant_Walk_Agent agent;
     agent.init(argc,argv);
     agent.run();
 
     return 0; 
 }
+

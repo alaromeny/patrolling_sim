@@ -16,16 +16,16 @@
 # CUSTOM_STAGE: flag if custom version of Stage is used: true, false
 # SPEEDUP: simulator speedup (if Custom Stage is used)
 
-MAP=DISlabs
-NROBOTS=8
+MAP=cumberland
+NROBOTS=1
 INITPOS=default
-ALG=DTAP
+ALG=RAND
 LOC=AMCL
 NAV=ros
 GWAIT=3
 COMMDELAY=0.2
 TERM=gnome-terminal 
-TIMEOUT=1800
+TIMEOUT=120
 CUSTOM_STAGE=false
 SPEEDUP=1.0
 
