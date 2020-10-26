@@ -96,20 +96,20 @@ void PatrolAgent::init(int argc, char** argv) {
     
     printf("[DEBUG:] Loaded graph %s with %d nodes and %d edges\n",mapname.c_str(),dimension,nedges);
 
-// #if ID_ROBOT == 0
-//     /* Output Graph Data */   
-//     for (int i=0;i<dimension;i++){
-//         printf ("ID= %u\n", vertex_web[i].id);
-//         printf ("X= %f, Y= %f\n", vertex_web[i].x, vertex_web[i].y);
-//         printf ("Pheromone= %u\n", vertex_web[i].pheromone_t);
-//         printf ("#Neigh= %u\n", vertex_web[i].num_neigh);
-//         // for (int j=0;j<vertex_web[i].num_neigh; j++){
-//         // printf("\tID = %u, DIR = %s, COST = %u\n", vertex_web[i].id_neigh[j], vertex_web[i].dir[j], vertex_web[i].cost[j]);
-//         // }
+#if 0
+    /* Output Graph Data */   
+    for (int i=0;i<dimension;i++){
+        printf ("ID= %u\n", vertex_web[i].id);
+        printf ("X= %f, Y= %f\n", vertex_web[i].x, vertex_web[i].y);
+        printf ("Pheromone= %u\n", vertex_web[i].pheromone_t);
+        printf ("#Neigh= %u\n", vertex_web[i].num_neigh);
+        // for (int j=0;j<vertex_web[i].num_neigh; j++){
+        // printf("\tID = %u, DIR = %s, COST = %u\n", vertex_web[i].id_neigh[j], vertex_web[i].dir[j], vertex_web[i].cost[j]);
+        // }
         
-//         printf("\n");   
-//     }
-// #endif
+        printf("\n");   
+    }
+#endif
       
     robot_active = true;
     motor_failure = false;
@@ -312,27 +312,27 @@ void PatrolAgent::run() {
         
         // robot_active = ID_ROBOT;
 
-        int chance_motor_failure = rand() % MOTOR_FAILURE_SETTING;
-        if(chance_motor_failure < MOTOR_FAILURE_THESHOLD){
-            motor_failure = true;
-        } else {
-            motor_failure = false;
-        }
-        if (robot_active){
-            int random = rand() % TOTAL_ERROR_SETTING;
-            if (random < TOTAL_ERROR_THRESHOLD){
-                robot_active = false;
-                do_deactivation_behavior(10);
-                robot_active = true;
-                ROS_INFO("Robot Reactivated");
-            }
+        // int chance_motor_failure = rand() % MOTOR_FAILURE_SETTING;
+        // if(chance_motor_failure < MOTOR_FAILURE_THESHOLD){
+        //     motor_failure = true;
+        // } else {
+        //     motor_failure = false;
+        // }
+        // if (robot_active){
+        //     int random = rand() % TOTAL_ERROR_SETTING;
+        //     if (random < TOTAL_ERROR_THRESHOLD){
+        //         robot_active = false;
+        //         do_deactivation_behavior(10);
+        //         robot_active = true;
+        //         ROS_INFO("Robot Reactivated");
+        //     }
 
 
-        } else {
+        // } else {
             
-        }
+        // }
 
-        if(robot_active && !motor_failure){
+        // if(robot_active && !motor_failure){
             if (goal_complete) {
                 onGoalComplete();  // can be redefined
                 resend_goal_count=0;
@@ -362,10 +362,10 @@ void PatrolAgent::run() {
                 }   
             
             } // if (goal_complete)
-        } else if (motor_failure){
-            ROS_INFO("Sending goal as current location");
-            sendFalseGoal();
-        }
+        // } else if (motor_failure){
+        //     ROS_INFO("Sending goal as current location");
+        //     sendFalseGoal();
+        // }
 
         
         //check if robot is still alive

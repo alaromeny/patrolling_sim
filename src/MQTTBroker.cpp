@@ -82,23 +82,11 @@ void forwardDelayedMessages(){
 
 void robotCallback(const std_msgs::Int16MultiArray::ConstPtr& msg)
 {
-    std::vector<signed short>::const_iterator it = msg->data.begin();    
-    std::vector<int> vresults;
-
-    vresults.clear();
-    
-    for (size_t k=0; k<msg->data.size(); k++) {
-        vresults.push_back(*it); it++;
-    } 
-
-    int id_sender = vresults[0];
-    int msg_type = vresults[1];
-
-    for(int loop=0;loop<teamsize;loop++){
-      if(loop != id_sender){
+  for(int loop=0;loop<teamsize;loop++){
+      //if(loop != id_sender){
       // printf("FORWARDING MESSAGE FROM %d TO %d ...\n",id_sender, loop);
         robot_publishers_list[loop].publish(msg);
-      }
+      //}
     }
   
     results_pub_monitor.publish(msg);
@@ -114,24 +102,13 @@ void robotCallback(const std_msgs::Int16MultiArray::ConstPtr& msg)
 }
 
 void monitorCallback(const std_msgs::Int16MultiArray::ConstPtr& msg) {
-    std::vector<signed short>::const_iterator it = msg->data.begin();    
-    std::vector<int> vresults;
-
-    vresults.clear();
-    
-    for (size_t k=0; k<msg->data.size(); k++) {
-        vresults.push_back(*it); it++;
-    } 
-
-    int id_sender = vresults[0];
-    int msg_type = vresults[1];
-    
-    if(id_sender == -1){
+   
+    // if(id_sender == -1){
       // printf("MESSAGE FROM MONITOR ID: %d \n",id_sender);  
       for(int loop=0;loop<teamsize;loop++){
         robot_publishers_list[loop].publish(msg);
       }
-    }
+    // }
 
     // broadcastMessage(msg);
 
