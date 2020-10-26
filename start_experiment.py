@@ -155,7 +155,7 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
     print cmd    
     os.system('sleep 1')
 
-    cmd_monitor = 'rosrun patrolling_sim monitor '+MAP+' '+ALG_SHORT+' '+NROBOTS  
+    cmd_monitor = 'rosrun patrolling_sim monitor '+MAP+' '+ALG_SHORT+' '+NROBOTS +' /results:=results_monitor'
     cmd_mqttbroker = 'rosrun patrolling_sim MQTTBroker ' +NROBOTS
     custom_stage = ''
     if (CUSTOM_STAGE=="true"):

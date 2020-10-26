@@ -935,7 +935,7 @@ void PatrolAgent::resultsCB(const std_msgs::Int16MultiArray::ConstPtr& msg) {
     int id_sender = vresults[0];
     int msg_type = vresults[1];
     
-    printf(" MESSAGE FROM %d TYPE %d ...\n",id_sender, msg_type);
+    // printf(" MESSAGE FROM %d TYPE %d ...\n",id_sender, msg_type);
     
     // messages coming from the monitor
     if (id_sender==-1 && msg_type==INITIALIZE_MSG_TYPE) {
