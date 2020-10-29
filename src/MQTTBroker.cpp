@@ -4,13 +4,17 @@
 #include <std_msgs/Int16MultiArray.h>
 #include <queue>
 
+#include "message_types.h"
+
 
 #define NUM_MAX_ROBOTS 32
 // #define MSG_DELAY_TIME 0.1
 
 
 uint teamsize;
+uint packet_id_counter = 0;
 int MQTT_ON;
+int QoS_LEVEL = 0;
 int MSG_DELAY_TIME;
 std::vector<ros::Subscriber> robot_subscibers_list;
 std::vector<ros::Publisher>  robot_publishers_list;
@@ -27,36 +31,43 @@ std::string ToString(T val)
     return stream.str();
 }
 
-struct delayed_msg {
+struct MQTT_msg {
   std_msgs::Int16MultiArray::ConstPtr msg;
   ros::Time msg_time;
+  uint packet_id;
+  bool dup_flag;
+  bool retain_flag;
+  int QoS_level;
+  uint sender_id;
+  uint msg_type;
 } ;
 
-std::queue<delayed_msg> delayed_msg_queue;
+std::queue<MQTT_msg> inbound_msg_queue;
+std::queue<MQTT_msg> outbound_msg_queue;
 
 
 void printMQTTQoS(){
 
   switch(MQTT_ON) {
+    QoS_LEVEL = MQTT_ON - 1;
     case 0:
         printf("MQTT_ON setting is 0; this node shouldn't be running!!!\n");
       break;
     case 1:
-        printf("MQTT_ON setting is 1; QoS is lvl 0\n");
+        printf("MQTT_ON setting is %d; QoS is lvl %d\n" , MQTT_ON, QoS_LEVEL);
       break;
     case 2:
-        printf("MQTT_ON setting is 2; QoS is lvl 1\n");
+        printf("MQTT_ON setting is %d; QoS is lvl %d\n" , MQTT_ON, QoS_LEVEL);
       break;
     case 3:
-        printf("MQTT_ON setting is 3; QoS is lvl 2\n");
+        printf("MQTT_ON setting is %d; QoS is lvl %d\n" , MQTT_ON, QoS_LEVEL);
       break;
     default:
         printf("MQTT_ON error, value is %d\n", MQTT_ON);
   }
 }
 
-
-void broadcastMessage(const std_msgs::Int16MultiArray::ConstPtr& msg){
+std::vector<int> getMessageData(const std_msgs::Int16MultiArray::ConstPtr& msg){
 
     std::vector<signed short>::const_iterator it = msg->data.begin();    
     std::vector<int> vresults;
@@ -67,8 +78,34 @@ void broadcastMessage(const std_msgs::Int16MultiArray::ConstPtr& msg){
         vresults.push_back(*it); it++;
     } 
 
-    int id_sender = vresults[0];
-    int msg_type = vresults[1];
+    return vresults;
+}
+
+
+int getMessageType(const std_msgs::Int16MultiArray::ConstPtr& msg){
+    std::vector<int> vresults = getMessageData(msg);
+    return vresults[1];
+}
+
+int getMessageSender(const std_msgs::Int16MultiArray::ConstPtr& msg){
+    std::vector<int> vresults = getMessageData(msg);
+    return vresults[0];
+}
+
+void getMessageHeader(const std_msgs::Int16MultiArray::ConstPtr& msg, int *msg_header){
+    std::vector<int> vresults = getMessageData(msg);
+    msg_header[0] = vresults[0];
+    msg_header[1] = vresults[1];
+}
+
+
+void broadcastMessage(const std_msgs::Int16MultiArray::ConstPtr& msg, double delay_time){
+
+    int msg_header[2];
+    getMessageHeader(msg, msg_header);
+    int id_sender = msg_header[0];
+    int msg_type = msg_header[1];
+
 
     for(int loop=0;loop<teamsize;loop++){
       //if(loop != id_sender){
@@ -82,54 +119,44 @@ void broadcastMessage(const std_msgs::Int16MultiArray::ConstPtr& msg){
 
 void pushMessageToQueue(const std_msgs::Int16MultiArray::ConstPtr& msg){
 
-    delayed_msg new_msg;
+    MQTT_msg new_msg;
     new_msg.msg = msg;
     new_msg.msg_time = ros::Time::now();
+    new_msg.packet_id = packet_id_counter;
+    new_msg.QoS_level = QoS_LEVEL;
 
-    delayed_msg_queue.push(new_msg);
+    packet_id_counter++;
+    int msg_header[2];
+    getMessageHeader(msg, msg_header);
 
+    new_msg.sender_id = msg_header[0];
+    new_msg.msg_type = msg_header[1];
+
+    if(new_msg.msg_type < 51){
+      inbound_msg_queue.push(new_msg);
+      printf("New message recieved of type %d. Adding to inbound queue\n", new_msg.msg_type);
+    } else {
+      //do MQTT protocol here
+    }
 }
 
 void forwardDelayedMessages(const ros::TimerEvent&){
 
 
-  int queue_size = delayed_msg_queue.size();
+  int queue_size = inbound_msg_queue.size();
   int i = 0;
 
   for (i=0;i<queue_size;i++){
-    delayed_msg curr_delayed_msg = delayed_msg_queue.front();
+    MQTT_msg curr_delayed_msg = inbound_msg_queue.front();
     ros::Time msg_timestamp = curr_delayed_msg.msg_time;
     ros::Time current_time = ros::Time::now();
 
-    // delayed_msg_queue.pop();
     double delay_time = current_time.toSec() - msg_timestamp.toSec();
     if (delay_time >= MSG_DELAY_TIME){
 
-      delayed_msg_queue.pop();
+      inbound_msg_queue.pop();
 
-      std::vector<signed short>::const_iterator it = curr_delayed_msg.msg->data.begin();    
-      std::vector<int> vresults;
-
-      vresults.clear();
-      
-      for (size_t k=0; k<curr_delayed_msg.msg->data.size(); k++) {
-          vresults.push_back(*it); it++;
-      } 
-
-      int id_sender = vresults[0];
-      int msg_type = vresults[1];
-
-      printf("Delay since message queued and now: %f, sent by: %d\n", delay_time, id_sender);
-
-      
-      for(int loop=0;loop<teamsize;loop++){
-        // if(loop != id_sender){
-          // printf("FORWARDING MESSAGE FROM %d TO %d ...\n",id_sender, loop);
-          robot_publishers_list[loop].publish(curr_delayed_msg.msg);
-        //}
-      }
-      results_pub_monitor.publish(curr_delayed_msg.msg);
-
+      broadcastMessage(curr_delayed_msg.msg, delay_time);
 
     } else {
       return;
@@ -138,16 +165,10 @@ void forwardDelayedMessages(const ros::TimerEvent&){
 }
 
 void robotCallback(const std_msgs::Int16MultiArray::ConstPtr& msg) {
-  
-    broadcastMessage(msg);
-
     pushMessageToQueue(msg);
 }
 
 void monitorCallback(const std_msgs::Int16MultiArray::ConstPtr& msg) {
-   
-    broadcastMessage(msg);
-
     pushMessageToQueue(msg);
 }
 
@@ -186,7 +207,7 @@ int main(int argc, char **argv) {
   } else {
     MSG_DELAY_TIME = 0.0;
     ROS_WARN("Cannot read parameter /Msg_Delay_Time. Using default value!");
-    
+
   }
 
   int i;
