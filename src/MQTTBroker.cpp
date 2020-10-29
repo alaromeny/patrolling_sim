@@ -149,8 +149,9 @@ int main(int argc, char **argv)
 
     //creating subscriber for results of robot i
 
-    std::string topic_sub = "results_robot";
+    std::string topic_sub = "/results/robot";
     topic_sub += ToString(i);
+    topic_sub += "_out";
 
     ros::Subscriber results_sub = nh.subscribe<std_msgs::Int16MultiArray>(topic_sub, 100, robotCallback);
     robot_subscibers_list.push_back(results_sub);
@@ -158,8 +159,9 @@ int main(int argc, char **argv)
 
     //creating matching publishers
 
-    std::string topic_pub = "results_robot";
+    std::string topic_pub = "/results/robot";
     topic_pub += ToString(i);
+    topic_pub += "_in";
 
     ros::Publisher results_pub = nh.advertise<std_msgs::Int16MultiArray>(topic_pub, 100);
 
@@ -168,8 +170,8 @@ int main(int argc, char **argv)
 
   }
 
-  results_sub_monitor = nh.subscribe<std_msgs::Int16MultiArray>("results_monitor", 100, monitorCallback);
-  results_pub_monitor = nh.advertise<std_msgs::Int16MultiArray>("results_monitor", 100);
+  results_sub_monitor = nh.subscribe<std_msgs::Int16MultiArray>("/results/monitor_out", 100, monitorCallback);
+  results_pub_monitor = nh.advertise<std_msgs::Int16MultiArray>("/results/monitor_in", 100);
 
   printf("Created %d topics.\n", i +1);
 

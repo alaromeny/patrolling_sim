@@ -49,13 +49,15 @@ LostMsgRate_list = ['0','0.1','0.2','0.3']
 
 Terminal_list = ['gnome-terminal','xterm']
 
+MQTT_list = ['Off','QoS 0', 'QoS 1', 'QoS 2']
+
 initPoses = {}
 
 COMMDELAY_DEFAULT = 0.0
 
 INITPOS_DEFAULT = "default"
 
-MQTTBroker = True
+# MQTT_BROKER = 1
 
 # return long name of the algorithm
 def findAlgName(alg):
@@ -105,7 +107,7 @@ def getSimulationRunning():
 # Terminates if simulation is stopped (/simulation_running param is false)
 # or if timeout is reached (if this is >0)
 # CUSTOM_STAGE: use of extended API for stage (requires custom stage and stage_ros).
-def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT, COMMDELAY, TERM, TIMEOUT, CUSTOM_STAGE, SPEEDUP):
+def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT, COMMDELAY, TERM, MQTT_BROKER_STR, TIMEOUT, CUSTOM_STAGE, SPEEDUP):
 
     ALG = findAlgName(ALG_SHORT)
     print 'Run the experiment'
@@ -118,9 +120,13 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
     print 'Goal wait time ', GWAIT
     print 'Communication delay ',COMMDELAY
     print 'Terminal ',TERM
+    print 'MQTTBroker ', MQTT_BROKER_STR
     print 'Timeout ',TIMEOUT
     print 'Custom Stage ',CUSTOM_STAGE
-    print 'Simulator speed-up ',SPEEDUP    
+    print 'Simulator speed-up ',SPEEDUP  
+
+    MQTT_BROKER = MQTT_list.index(MQTT_BROKER_STR) 
+    print MQTT_BROKER 
 
     if (TIMEOUT>0):
         TIMEOUT = TIMEOUT + 10 # Let's give more time to complete actions and logging
@@ -149,14 +155,17 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
 #    os.system("rosparam set /lost_message_rate "+LOSTMSGRATE)
     os.system("rosparam set /navigation_module "+NAV_MODULE)
     os.system("rosparam set /initial_positions "+INITPOS)
+    os.system("rosparam set /MQTT_on " + str(MQTT_BROKER))
 
     cmd = './setinitposes.py '+MAP+' "'+iposes+'"'
     os.system(cmd)
     print cmd    
     os.system('sleep 1')
 
-    cmd_monitor = 'rosrun patrolling_sim monitor '+MAP+' '+ALG_SHORT+' '+NROBOTS +' /results:=results_monitor'
-    cmd_mqttbroker = 'rosrun patrolling_sim MQTTBroker ' +NROBOTS
+    cmd_monitor = 'rosrun patrolling_sim monitor '+MAP+' '+ALG_SHORT+' '+NROBOTS
+    if(MQTT_BROKER):
+        cmd_mqttbroker = 'rosrun patrolling_sim MQTTBroker ' +NROBOTS
+
     custom_stage = ''
     if (CUSTOM_STAGE=="true"):
       custom_stage = ' custom_stage:=true'
@@ -164,17 +173,17 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
     # if (os.getenv('ROS_DISTRO')=='groovy'):
         # cmd_stage = cmd_stage + " stage_pkg:=stage"
     print cmd_monitor
-    print cmd_mqttbroker
     print cmd_stage
     if (TERM == 'xterm'):
-        os.system('xterm -e  "'+cmd_monitor+'" &') 
-        os.system('xterm -e  "'+cmd_mqttbroker+'" &') 
+        os.system('xterm -e  "'+cmd_monitor+'" &')
         os.system('xterm -e  "'+cmd_stage+'" &')
     else: 
         os.system('gnome-terminal --tab -e  "bash -c \''+cmd_monitor+'\'" --tab -e "bash -c \''+cmd_stage+'\'" &')
 
     
-    if (MQTTBroker):
+    if (MQTT_BROKER):
+        print cmd_mqttbroker
+
         if (TERM == 'xterm'):
             os.system('xterm -e  "'+cmd_mqttbroker+'" &') 
         else: 
@@ -218,14 +227,14 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
     for i in range(0,int(NROBOTS)):
         print 'Run patrol robot ',i
         if (ALG_SHORT=='MSP'):
-            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' MSP/'+MAP+'/'+MAP+'_'+str(NROBOTS)+'_'+str(i)+' '+'\''
+            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' MSP/'+MAP+'/'+MAP+'_'+str(NROBOTS)+'_'+str(i) +'\''
         elif (ALG_SHORT=='GBS' or ALG_SHORT=='SEBS' or ALG_SHORT=='CBLS'):
-            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' '+str(NROBOTS)+'\''
+            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' '+str(NROBOTS) +'\''
         else:
             now = datetime.datetime.now()
             dateString = now.strftime("%Y-%m-%d-%H:%M")
             #cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' > logs/'+ALG+'-'+dateString+'-robot'+str(i)+'.log \''
-            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' /results:=results_robot'+str(i)+'\''
+            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i) +'\''
         print cmd
         if (TERM == 'xterm'):
           os.system('xterm -e  "'+cmd+'" &')
@@ -391,6 +400,22 @@ class DIP(tk.Frame):
         tk.OptionMenu(self, self.term_ddm, *self.term_list).grid(sticky=W, row=_row, column=1, pady=4, padx=5)
   
         _row = _row + 1
+        lbl = Label(self, text="MQTT")
+        lbl.grid(sticky=W, row = _row, column= 0, pady=4, padx=5)
+
+        self.MQTT_list = MQTT_list
+        self.MQTT_ddm = StringVar(self)
+        try:
+            lastterm=self.oldConfigs["MQTT"]
+        except:
+            lastterm=self.MQTT_list[0]
+        self.MQTT_ddm.set(MQTT_list[0])
+        tk.OptionMenu(self, self.MQTT_ddm, *self.MQTT_list).grid(sticky=W, row=_row, column=1, pady=4, padx=5)
+
+
+
+
+        _row = _row + 1
 
         launchButton = Button(self, text="Start Experiment",command=self.launch_script)
         launchButton.grid(sticky=W, row=_row, column=0, pady=4, padx=5)
@@ -401,7 +426,7 @@ class DIP(tk.Frame):
     
     def launch_script(self):
         self.saveConfigFile();
-        thread.start_new_thread( run_experiment, (self.map_ddm.get(), self.robots_ddm.get(), INITPOS_DEFAULT, self.alg_ddm.get(),self.locmode_ddm.get(), self.navmode_ddm.get(), self.gwait_ddm.get(), COMMDELAY_DEFAULT, self.term_ddm.get(),0,"false",1.0) )
+        thread.start_new_thread( run_experiment, (self.map_ddm.get(), self.robots_ddm.get(), INITPOS_DEFAULT, self.alg_ddm.get(),self.locmode_ddm.get(), self.navmode_ddm.get(), self.gwait_ddm.get(), COMMDELAY_DEFAULT, self.term_ddm.get(), self.MQTT_ddm.get(), 0,"false",1.0) )
 
     
     def quit(self):
@@ -421,6 +446,7 @@ class DIP(tk.Frame):
       f.write("navmode: %s\n"%self.navmode_ddm.get())
       f.write("gwait: %s\n"%self.gwait_ddm.get())
       f.write("term: %s\n"%self.term_ddm.get())
+      f.write("MQTT: %s\n"%self.MQTT_ddm.get())
       f.close()
 
 
@@ -461,14 +487,15 @@ def main():
     COMMDELAY = sys.argv[8]
     TERM = sys.argv[9]
     TIMEOUT = int(sys.argv[10])
+    MQTT_BROKER = int(sys.argv[11])
     CUSTOM_STAGE = False
     SPEEDUP = 1.0
-    if (len(sys.argv)>=12):
-      CUSTOM_STAGE = sys.argv[11]
     if (len(sys.argv)>=13):
-      SPEEDUP = float(sys.argv[12])
+      CUSTOM_STAGE = sys.argv[12]
+    if (len(sys.argv)>=14):
+      SPEEDUP = float(sys.argv[13])
     
-    run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT, COMMDELAY, TERM, TIMEOUT, CUSTOM_STAGE,SPEEDUP)
+    run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT, COMMDELAY, TERM, MQTT_BROKER, TIMEOUT, CUSTOM_STAGE,SPEEDUP)
 
  
 

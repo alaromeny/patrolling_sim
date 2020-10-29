@@ -67,6 +67,8 @@ protected:
     
     int TEAMSIZE;
     int ID_ROBOT;
+    int MQTT_ON;
+
 
     bool robot_active;
     bool motor_failure;
@@ -106,6 +108,9 @@ protected:
     ros::Publisher results_pub;
     ros::Publisher cmd_vel_pub;
 
+    std::string results_pub_name;
+    std::string results_sub_name;
+
     
 public:
     
@@ -118,6 +123,7 @@ public:
     }
     
     virtual void init(int argc, char** argv);
+    void checkForMQTT();
     void ready();
     void initialize_node();
     void readParams(); // read ROS parameters

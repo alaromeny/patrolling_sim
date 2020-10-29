@@ -83,6 +83,8 @@ typedef unsigned int uint;
 ros::Subscriber results_sub;
 ros::Publisher results_pub, screenshot_pub;
 ros::ServiceServer GotoStartPosMethod;
+std::string results_pub_name;
+std::string results_sub_name;
 
 //Initialization:
 bool initialize = true; // Initialization flag
@@ -91,6 +93,9 @@ uint cnt=0;  // Count number of robots connected
 uint teamsize;
 bool init_robots[NUM_MAX_ROBOTS];
 double last_goal_reached[NUM_MAX_ROBOTS];
+int MQTT_ON = 0;
+
+
 
 
 // mutex for accessing last_goal_reached vector
@@ -128,7 +133,6 @@ uint complete_patrol = 0;
 uint patrol_cnt = 1;
 
 
-
 #if SAVE_HYSTOGRAMS
 #define hn ((int)(MAXIDLENESS/RESOLUTION)+1)
 int hsum;
@@ -145,6 +149,29 @@ void dolog(const char *str) {
   if (logfile) {
     fprintf(logfile,"%s\n",str);
     fflush(logfile);
+  }
+}
+
+void checkForMQTT(){
+  if(ros::param::has("/MQTT_on")){
+    ros::param::get("/MQTT_on", MQTT_ON);
+    printf("MQTT ros::PARAM IS: %d\n", MQTT_ON);
+
+  }else{
+    MQTT_ON = 0;
+    printf("MQTT PARAM SET TO DEFAULT: %d\n", MQTT_ON);
+  }
+
+  printf("MQTT PARAM IS: %d\n", MQTT_ON);
+
+  if(MQTT_ON){
+    results_pub_name = "/results/monitor_out";
+    results_sub_name = "/results/monitor_in";
+    printf("MQTT Param set to TRUE\n");
+  } else{
+    results_pub_name = "results";
+    results_sub_name = "results";
+    printf("MQTT Param set to FALSE\n");
   }
 }
 
@@ -821,15 +848,15 @@ int main(int argc, char** argv){  //pass TEAMSIZE GRAPH ALGORITHM
 #endif
     
   //Wait for all robots to connect! (Exchange msgs)
-  printf("Launching Monitor Node cpp");
+  printf("Launching Monitor Node cpp\n");
   ros::init(argc, argv, "monitor");
   ros::NodeHandle nh;
-  
+  checkForMQTT();
   //Subscribe "results" from robots
-  results_sub = nh.subscribe("results", 100, resultsCB);   
+  results_sub = nh.subscribe(results_sub_name, 100, resultsCB);   
   
   //Publish data to "results"
-  results_pub = nh.advertise<std_msgs::Int16MultiArray>("results", 100);
+  results_pub = nh.advertise<std_msgs::Int16MultiArray>(results_pub_name, 100);
   
 #if EXTENDED_STAGE  
   screenshot_pub = nh.advertise<std_msgs::String>("/stageGUIRequest", 100);

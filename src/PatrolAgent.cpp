@@ -55,6 +55,14 @@ using namespace std;
 
 const std::string PS_path = ros::package::getPath("patrolling_sim"); 	//D.Portugal => get pkg path
 
+template <typename T>
+std::string ToString(T val)
+{
+    std::stringstream stream;
+    stream << val;
+    return stream.str();
+}
+
 
 void PatrolAgent::init(int argc, char** argv) {
         /*
@@ -202,15 +210,34 @@ void PatrolAgent::init(int argc, char** argv) {
     
     ros::spinOnce(); 
     
+    readParams();
+
+    if(MQTT_ON){
+        results_pub_name = "/results/robot";
+        results_pub_name += ToString(ID_ROBOT);
+        results_pub_name += "_out";
+        results_sub_name = "/results/robot";
+        results_sub_name += ToString(ID_ROBOT);
+        results_sub_name += "_in"; 
+
+        printf("Created Publisher called: %s\n", results_pub_name.c_str());
+        printf("Created subscriber called: %s\n", results_sub_name.c_str());
+
+
+    }else{
+        results_pub_name = "results";
+        results_sub_name = "results";
+
+    }
     //Publicar dados para "results"
-    results_pub = nh.advertise<std_msgs::Int16MultiArray>("results", 100);
+    results_pub = nh.advertise<std_msgs::Int16MultiArray>(results_pub_name, 100);
     // results_sub = nh.subscribe("results", 10, resultsCB); //Subscrever "results" vindo dos robots
-    results_sub = nh.subscribe<std_msgs::Int16MultiArray>("results", 100, boost::bind(&PatrolAgent::resultsCB, this, _1) ); //Subscrever "results" vindo dos robots
+    results_sub = nh.subscribe<std_msgs::Int16MultiArray>(results_sub_name, 100, boost::bind(&PatrolAgent::resultsCB, this, _1) ); //Subscrever "results" vindo dos robots
+
 
     // last time comm delay has been applied
     last_communication_delay_time = ros::Time::now().toSec();   
 
-    readParams();
 }
     
 void PatrolAgent::ready() {
@@ -249,6 +276,13 @@ void PatrolAgent::ready() {
 
 
 void PatrolAgent::readParams() {
+
+    if(ros::param::has("/MQTT_on")){
+        ros::param::get("/MQTT_on", MQTT_ON);
+    } else{
+        MQTT_ON = 0;
+        ROS_WARN("Cannot read parameter /MQTT_on. Using default value!");
+    }
 
     if (! ros::param::get("/goal_reached_wait", goal_reached_wait)) {
       //goal_reached_wait = 0.0;
