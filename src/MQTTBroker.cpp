@@ -6,10 +6,12 @@
 
 
 #define NUM_MAX_ROBOTS 32
-#define MSG_DELAY_TIME 0.2
+// #define MSG_DELAY_TIME 0.1
 
 
 uint teamsize;
+int MQTT_ON;
+int MSG_DELAY_TIME;
 std::vector<ros::Subscriber> robot_subscibers_list;
 std::vector<ros::Publisher>  robot_publishers_list;
 
@@ -25,13 +27,34 @@ std::string ToString(T val)
     return stream.str();
 }
 
-
 struct delayed_msg {
   std_msgs::Int16MultiArray::ConstPtr msg;
   ros::Time msg_time;
 } ;
 
 std::queue<delayed_msg> delayed_msg_queue;
+
+
+void printMQTTQoS(){
+
+  switch(MQTT_ON) {
+    case 0:
+        printf("MQTT_ON setting is 0; this node shouldn't be running!!!\n");
+      break;
+    case 1:
+        printf("MQTT_ON setting is 1; QoS is lvl 0\n");
+      break;
+    case 2:
+        printf("MQTT_ON setting is 2; QoS is lvl 1\n");
+      break;
+    case 3:
+        printf("MQTT_ON setting is 3; QoS is lvl 2\n");
+      break;
+    default:
+        printf("MQTT_ON error, value is %d\n", MQTT_ON);
+  }
+}
+
 
 void broadcastMessage(const std_msgs::Int16MultiArray::ConstPtr& msg){
 
@@ -43,10 +66,9 @@ void broadcastMessage(const std_msgs::Int16MultiArray::ConstPtr& msg){
     for (size_t k=0; k<msg->data.size(); k++) {
         vresults.push_back(*it); it++;
     } 
-// 
+
     int id_sender = vresults[0];
     int msg_type = vresults[1];
-
 
     for(int loop=0;loop<teamsize;loop++){
       //if(loop != id_sender){
@@ -58,7 +80,17 @@ void broadcastMessage(const std_msgs::Int16MultiArray::ConstPtr& msg){
 }
 
 
-void forwardDelayedMessages(){
+void pushMessageToQueue(const std_msgs::Int16MultiArray::ConstPtr& msg){
+
+    delayed_msg new_msg;
+    new_msg.msg = msg;
+    new_msg.msg_time = ros::Time::now();
+
+    delayed_msg_queue.push(new_msg);
+
+}
+
+void forwardDelayedMessages(const ros::TimerEvent&){
 
 
   int queue_size = delayed_msg_queue.size();
@@ -68,61 +100,58 @@ void forwardDelayedMessages(){
     delayed_msg curr_delayed_msg = delayed_msg_queue.front();
     ros::Time msg_timestamp = curr_delayed_msg.msg_time;
     ros::Time current_time = ros::Time::now();
-    if (current_time.toSec() - msg_timestamp.toSec() > MSG_DELAY_TIME){
+
+    // delayed_msg_queue.pop();
+    double delay_time = current_time.toSec() - msg_timestamp.toSec();
+    if (delay_time >= MSG_DELAY_TIME){
+
       delayed_msg_queue.pop();
 
-      // robot_publishers_list[id_sender].publish(msg);
+      std::vector<signed short>::const_iterator it = curr_delayed_msg.msg->data.begin();    
+      std::vector<int> vresults;
+
+      vresults.clear();
+      
+      for (size_t k=0; k<curr_delayed_msg.msg->data.size(); k++) {
+          vresults.push_back(*it); it++;
+      } 
+
+      int id_sender = vresults[0];
+      int msg_type = vresults[1];
+
+      printf("Delay since message queued and now: %f, sent by: %d\n", delay_time, id_sender);
+
+      
+      for(int loop=0;loop<teamsize;loop++){
+        // if(loop != id_sender){
+          // printf("FORWARDING MESSAGE FROM %d TO %d ...\n",id_sender, loop);
+          robot_publishers_list[loop].publish(curr_delayed_msg.msg);
+        //}
+      }
+      results_pub_monitor.publish(curr_delayed_msg.msg);
+
+
+    } else {
+      return;
     }
-
   }
-
-  // robot_publishers_list[id_sender].publish(msg);
-
 }
 
-void robotCallback(const std_msgs::Int16MultiArray::ConstPtr& msg)
-{
-  for(int loop=0;loop<teamsize;loop++){
-      //if(loop != id_sender){
-      // printf("FORWARDING MESSAGE FROM %d TO %d ...\n",id_sender, loop);
-        robot_publishers_list[loop].publish(msg);
-      //}
-    }
+void robotCallback(const std_msgs::Int16MultiArray::ConstPtr& msg) {
   
-    results_pub_monitor.publish(msg);
-    
-    // broadcastMessage(msg);
+    broadcastMessage(msg);
 
-    // delayed_msg new_msg;
-    // new_msg.msg = msg;
-    // new_msg.msg_time = ros::Time::now();
-
-    // delayed_msg_queue.push(new_msg);
-
+    pushMessageToQueue(msg);
 }
 
 void monitorCallback(const std_msgs::Int16MultiArray::ConstPtr& msg) {
    
-    // if(id_sender == -1){
-      // printf("MESSAGE FROM MONITOR ID: %d \n",id_sender);  
-      for(int loop=0;loop<teamsize;loop++){
-        robot_publishers_list[loop].publish(msg);
-      }
-    // }
+    broadcastMessage(msg);
 
-    // broadcastMessage(msg);
-
-
-    // delayed_msg new_msg;
-    // new_msg.msg = msg;
-    // new_msg.msg_time = ros::Time::now();
-
-    // delayed_msg_queue.push(new_msg);
-
+    pushMessageToQueue(msg);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
 
 
   //   uint teamsize;
@@ -143,6 +172,22 @@ int main(int argc, char **argv)
 
   ros::NodeHandle nh;
 
+
+  if(ros::param::has("/MQTT_on")){
+    ros::param::get("/MQTT_on", MQTT_ON);
+    printMQTTQoS();
+  } else{
+    MQTT_ON = 0;
+    ROS_WARN("Cannot read parameter /MQTT_on. Using default value!");
+  }
+
+  if(ros::param::has("/Msg_Delay_Time")){
+    ros::param::get("/Msg_Delay_Time", MSG_DELAY_TIME);
+  } else {
+    MSG_DELAY_TIME = 0.0;
+    ROS_WARN("Cannot read parameter /Msg_Delay_Time. Using default value!");
+    
+  }
 
   int i;
   for(i=0; i<teamsize; i++){
@@ -181,6 +226,8 @@ int main(int argc, char **argv)
   // ros::Subscriber results_sub = nh.subscribe<std_msgs::Int16MultiArray>("results", 100, chatterCallback ); //Subscrever "results" vindo dos robots
 
 
+  ros::Timer timerDelayedMessages =
+      nh.createTimer(ros::Duration(1.0 / 40.0), forwardDelayedMessages);
 
   ros::spin();
 

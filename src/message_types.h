@@ -36,11 +36,11 @@
 *********************************************************************/
 
 // Message types
-#define INITIALIZE_MSG_TYPE 10
+#define INITIALIZE_MSG_TYPE     10
 #define TARGET_REACHED_MSG_TYPE 11
-#define INTERFERENCE_MSG_TYPE 12
+#define INTERFERENCE_MSG_TYPE   12
 
-#define GBS_MSG_TYPE 31
+#define GBS_MSG_TYPE  31
 #define SEBS_MSG_TYPE 32
 #define CBLS_MSG_TYPE 32
 
@@ -48,6 +48,13 @@
 #define DTAGREEDY_MSG_TYPE 40 //Idleness message: msg format: [ID_ROBOT,msg_type,global_idleness[1..dimension],next_vertex]
 
 // Message types for DTASSI algorithm
-#define DTASSI_TR 41 //Task request, msg format: [ID_ROBOT,msg_type,next_vertex_index,bid_value]
+#define DTASSI_TR  41 //Task request, msg format: [ID_ROBOT,msg_type,next_vertex_index,bid_value]
 #define DTASSI_BID 42 //Bid Message, msg format: [ID_ROBOT,msg_type,next_vertex_index,bid_value]
+
+
+// Message types for MQTT QoS 1 and 2
+#define PUBACK  51
+#define PUBREC  52
+#define PUBREL  53
+#define PUBCOMP 54
 

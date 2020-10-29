@@ -156,6 +156,9 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
     os.system("rosparam set /navigation_module "+NAV_MODULE)
     os.system("rosparam set /initial_positions "+INITPOS)
     os.system("rosparam set /MQTT_on " + str(MQTT_BROKER))
+    # os.system("rosparam set /Msg_Delay_Time " + str(COMMDELAY))
+    os.system("rosparam set /Msg_Delay_Time " + str(0.2))
+
 
     cmd = './setinitposes.py '+MAP+' "'+iposes+'"'
     os.system(cmd)
