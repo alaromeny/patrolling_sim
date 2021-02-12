@@ -42,6 +42,7 @@
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
 #include <nav_msgs/Odometry.h>
+#include <patrolling_sim/SEBS_Message.h>
 
 #include "PatrolAgent.h"
 #include "getgraph.h"
@@ -70,6 +71,7 @@ public:
     virtual int compute_next_vertex();
     virtual void processEvents();
     virtual void send_results();
+    virtual void do_send_ROS_message();
     virtual void receive_results();    
 };
 
@@ -179,6 +181,17 @@ void SEBS_Agent::send_results() {
     msg.data.push_back(current_vertex);
     msg.data.push_back(next_vertex);    
     do_send_message(msg);
+}
+
+
+void SEBS_Agent::do_send_ROS_message() {
+    int value = ID_ROBOT;
+    if (value==-1){value=0;}
+    // [ID,msg_type,vertex,intention]
+
+   
+    // results_pub.publish(msg);
+    ros::spinOnce();
 }
 
 void SEBS_Agent::receive_results() {

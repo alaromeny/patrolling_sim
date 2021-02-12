@@ -49,11 +49,13 @@ find_package(catkin REQUIRED COMPONENTS
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+ add_message_files(
+   FILES
+   GBS_Message.msg
+   SEBS_Message.msg
+   DTAGreedy_Message.msg
+   DTAP_Message.msg
+ )
 
 ## Generate services in the 'srv' folder
 add_service_files(
@@ -86,6 +88,7 @@ add_service_files(
 catkin_package(
   INCLUDE_DIRS src
    LIBRARIES PatrolAgent SSIPatrolAgent
+   CATKIN_DEPENDS message_runtime
 #  CATKIN_DEPENDS actionlib move_base_msgs nav_msgs roscpp tf
 #  DEPENDS system_lib
 )
