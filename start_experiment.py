@@ -53,6 +53,8 @@ COMMDELAY_DEFAULT = 0.0
 
 INITPOS_DEFAULT = "default"
 
+MQTTBroker = True
+
 # return long name of the algorithm
 def findAlgName(alg):
     r = 'None'
@@ -149,14 +151,19 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
     print cmd    
     os.system('sleep 1')
 
-    cmd_monitor = 'rosrun patrolling_sim monitor '+MAP+' '+ALG_SHORT+' '+NROBOTS  
+    cmd_monitor = 'rosrun patrolling_sim monitor '+MAP+' '+ALG_SHORT+' '+NROBOTS
+    cmd_mqttbroker = 'rosrun patrolling_sim MQTTBroker ' +NROBOTS 
+    if (MQTTBroker):
+        cmd_monitor = cmd_monitor + ' /results:=results_monitor'
+
     custom_stage = ''
     if (CUSTOM_STAGE=="true"):
       custom_stage = ' custom_stage:=true'
     cmd_stage = 'roslaunch patrolling_sim map.launch map:='+MAP+custom_stage
-    if (os.getenv('ROS_DISTRO')=='groovy'):
-      cmd_stage = cmd_stage + " stage_pkg:=stage"
+    # if (os.getenv('ROS_DISTRO')=='groovy'):
+    #   cmd_stage = cmd_stage + " stage_pkg:=stage"
     print cmd_monitor
+    print cmd_mqttbroker
     print cmd_stage
     if (TERM == 'xterm'):
         os.system('xterm -e  "'+cmd_monitor+'" &') 
@@ -164,6 +171,13 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
     else: 
         os.system('gnome-terminal --tab -e  "bash -c \''+cmd_monitor+'\'" --tab -e "bash -c \''+cmd_stage+'\'" &')
     
+    if (MQTTBroker):
+        if (TERM == 'xterm'):
+            os.system('xterm -e  "'+cmd_mqttbroker+'" &') 
+        else: 
+            os.system('gnome-terminal --tab -e  "bash -c \''+cmd_mqttbroker+'\'" &')
+
+
     os.system('sleep 3')
     
     # Start robots
@@ -191,8 +205,8 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
         gcmd = gcmd + ' --tab -e "'+cmd+'" '
     gcmd = gcmd + '&'
     if (TERM == 'gnome-terminal'):
-	#print gcmd
-	os.system(gcmd)
+    	#print gcmd
+    	os.system(gcmd)
     os.system('sleep 5')    
         
     # Start patrol behaviors
@@ -208,6 +222,10 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
             dateString = now.strftime("%Y-%m-%d-%H:%M")
             #cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' > logs/'+ALG+'-'+dateString+'-robot'+str(i)+'.log \''
             cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+'\''
+        
+        if (MQTTBroker):
+            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' /results:=results_robot'+str(i)+'\''
+
         print cmd
         if (TERM == 'xterm'):
 	  os.system('xterm -e  "'+cmd+'" &')
@@ -215,8 +233,8 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
         gcmd = gcmd + ' --tab -e "'+cmd+'" '
     gcmd = gcmd + '&'
     if (TERM == 'gnome-terminal'):
-      #print gcmd
-      os.system(gcmd)
+        #print gcmd
+        os.system(gcmd)
     os.system('sleep '+NROBOTS)
 
     print 'Stage simulator footprints and speedup'

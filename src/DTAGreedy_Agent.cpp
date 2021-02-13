@@ -116,8 +116,8 @@ void DTAGreedy_Agent::init(int argc, char** argv) {
     ROS_INFO("Robot %d: Initial pose %.1f %.1f %.1f",value,origin_x, origin_y, origin_theta);
     
     //overwrite the patrolAgent pub and sub with custom messages
-    DTAGreedy_results_pub = nh.advertise<patrolling_sim::DTAGreedy_Message>("DTAGreedy_results", 100);
-    DTAGreedy_results_sub = nh.subscribe<patrolling_sim::DTAGreedy_Message>("DTAGreedy_results", 10,  boost::bind(&DTAGreedy_Agent::ROS_resultsCB, this, _1));  
+    DTAGreedy_results_pub = nh.advertise<patrolling_sim::DTAGreedy_Message>("DTAG_results", 100);
+    DTAGreedy_results_sub = nh.subscribe<patrolling_sim::DTAGreedy_Message>("DTAG_results", 10,  boost::bind(&DTAGreedy_Agent::ROS_resultsCB, this, _1));  
   
 }
 
