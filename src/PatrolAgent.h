@@ -46,7 +46,8 @@
 #include <nav_msgs/Odometry.h>
 #include <std_msgs/Int16MultiArray.h>
 #include <patrolling_sim/Initialize_Message.h>
-#include <patrolling_sim/SEBS_Message.h>
+#include <patrolling_sim/Interference_Message.h>
+#include <patrolling_sim/TargetReached_Message.h>
 
 
 #include "getgraph.h"
@@ -101,6 +102,9 @@ protected:
     ros::Publisher  cmd_vel_pub;
     ros::Publisher  initialize_pub;
     ros::Subscriber initialize_sub;
+    ros::Publisher  interference_pub;
+    ros::Subscriber interference_sub;
+    ros::Publisher  targetReached_pub;
 
     
 public:
@@ -133,6 +137,7 @@ public:
 
     
     void send_goal_reached();
+    void send_target_reached();
     bool check_interference (int ID_ROBOT);
     void do_interference_behavior();
     void backup();
@@ -151,10 +156,12 @@ public:
     virtual void do_send_ROS_message();
     void do_send_message(std_msgs::Int16MultiArray &msg);
     void send_interference();
+    void send_interference_msg(int sender_ID, int target_ID);
     void positionsCB(const nav_msgs::Odometry::ConstPtr& msg);
     void resultsCB(const std_msgs::Int16MultiArray::ConstPtr& msg);
     void initCB(const patrolling_sim::Initialize_Message::ConstPtr& msg);
-    void ROS_resultsCB(const patrolling_sim::SEBS_Message::ConstPtr& msg);
+    void interferenceCB(const patrolling_sim::Interference_Message::ConstPtr& msg);
+    void ROS_resultsCB();
     // Must be implemented by sub-classes
     virtual int compute_next_vertex() = 0;
 

@@ -42,6 +42,7 @@
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
 #include <nav_msgs/Odometry.h>
+#include <patrolling_sim/GBS_Message.h>
 
 #include "PatrolAgent.h"
 #include "getgraph.h"
@@ -60,6 +61,8 @@ private:
   bool arrived;
   uint vertex_arrived;
   int robot_arrived;  
+  ros::Subscriber gbs_results_sub;
+  ros::Publisher  gbs_results_pub;  
 
 public:
     virtual void init(int argc, char** argv);
@@ -67,6 +70,9 @@ public:
     virtual void send_results();
     virtual void receive_results();    
     virtual void processEvents();
+    virtual void ROS_resultsCB(const patrolling_sim::GBS_Message::ConstPtr& msg);
+    virtual void do_send_ROS_message();
+
 };
 
 
@@ -74,7 +80,8 @@ public:
 void GBS_Agent::init(int argc, char** argv) {
   
   PatrolAgent::init(argc,argv);
- 
+  ros::NodeHandle nh;
+
   NUMBER_OF_ROBOTS = atoi(argv[3]);
   arrived = false; 
   
@@ -112,7 +119,15 @@ void GBS_Agent::init(int argc, char** argv) {
   }
   
   printf("G1 = %f, G2 = %f\n", G1, G2); 
+
+  //overwrite the patrolAgent pub and sub with custom messages
+  gbs_results_pub = nh.advertise<patrolling_sim::GBS_Message>("gbs_results", 100);
+  gbs_results_sub = nh.subscribe<patrolling_sim::GBS_Message>("gbs_results", 10,  boost::bind(&GBS_Agent::ROS_resultsCB, this, _1));  
+  
+
 }
+
+
 
 // Executed at any cycle when goal is not reached
 void GBS_Agent::processEvents() {
@@ -172,6 +187,25 @@ void GBS_Agent::receive_results() {
     arrived = true;
 }
 
+void GBS_Agent::ROS_resultsCB(const patrolling_sim::GBS_Message::ConstPtr& msg) { 
+    
+    printf("Robot Callback %d\n", ID_ROBOT); 
+    
+    ros::spinOnce();
+  
+}
+
+void GBS_Agent::do_send_ROS_message() {
+    int value = ID_ROBOT;
+    if (value==-1){value=0;}
+    // [ID,msg_type,vertex]
+    patrolling_sim::GBS_Message msg;
+    msg.sender_ID = value;
+    msg.vertex    = current_vertex;
+
+    gbs_results_pub.publish(msg);
+    ros::spinOnce();
+}
 
 int main(int argc, char** argv) {
 

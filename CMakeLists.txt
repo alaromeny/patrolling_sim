@@ -54,8 +54,10 @@ find_package(catkin REQUIRED COMPONENTS
    DTAGreedy_Message.msg
    DTAP_Message.msg
    Initialize_Message.msg
+   Interference_Message.msg
    GBS_Message.msg
    SEBS_Message.msg
+   TargetReached_Message.msg
  )
 
 ## Generate services in the 'srv' folder

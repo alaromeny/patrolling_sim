@@ -54,6 +54,8 @@
 #include <std_msgs/Int16MultiArray.h>
 #include <std_msgs/String.h>
 #include <patrolling_sim/Initialize_Message.h>
+#include <patrolling_sim/Interference_Message.h>
+#include <patrolling_sim/TargetReached_Message.h>
 
 
 using namespace std;
@@ -82,9 +84,10 @@ using std::endl;
 
 typedef unsigned int uint;
 
-ros::Subscriber results_sub, initialize_sub;
-ros::Publisher results_pub, screenshot_pub, initialize_pub;
+ros::Subscriber results_sub, initialize_sub, interference_sub, targetReached_sub;
+ros::Publisher  results_pub, initialize_pub, interference_pub, targetReached_pub, screenshot_pub;
 ros::ServiceServer GotoStartPosMethod;
+
 
 //Initialization:
 bool initialize = true; // Initialization flag
@@ -229,9 +232,43 @@ void initCB(const patrolling_sim::Initialize_Message::ConstPtr& msg) {
   }
 }
 
+void interferenceCB(const patrolling_sim::Interference_Message::ConstPtr& msg) {
+  // int16 ID_sender
+  // int16 ID_target
 
-void resultsCB(const std_msgs::Int16MultiArray::ConstPtr& msg) 
-{
+  int id_sender = msg->sender_ID;
+  int id_target = msg->target_ID;
+
+  //interference: [ID,msg_type]
+  if (initialize==false){
+      ROS_INFO("Robot %d sent interference.\n", id_sender); 
+      interference_cnt++;
+      ros::spinOnce();
+  }
+}
+
+
+void targetReachedCB(const patrolling_sim::TargetReached_Message::ConstPtr& msg){
+
+  // int16 sender_ID
+  // int16 vertex_reached
+
+  int id_robot = msg->sender_ID;
+  int goal = msg->vertex_reached;
+
+  //message sent from robot to let everyone know it reached a target
+  if (initialize==false){ 
+      
+      ROS_INFO("Robot %d reached Goal %d.\n", id_robot, goal); 
+      fflush(stdout);
+      goal_reached = true;
+      update_stats(id_robot, goal);
+      ros::spinOnce();
+  }
+}
+
+
+void resultsCB(const std_msgs::Int16MultiArray::ConstPtr& msg)  {
     dolog("resultsCB - begin");
 
     std::vector<signed short>::const_iterator it = msg->data.begin();    
@@ -326,16 +363,16 @@ void resultsCB(const std_msgs::Int16MultiArray::ConstPtr& msg)
             break;
         }
          
-        case INTERFERENCE_MSG_TYPE:
-        {
-            //interference: [ID,msg_type]
-            if (initialize==false){
-                ROS_INFO("Robot %d sent interference.\n", id_robot); 
-                interference_cnt++;
-                ros::spinOnce();
-            }
-            break;
-        }
+        // case INTERFERENCE_MSG_TYPE:
+        // {
+        //     //interference: [ID,msg_type]
+        //     if (initialize==false){
+        //         ROS_INFO("Robot %d sent interference.\n", id_robot); 
+        //         interference_cnt++;
+        //         ros::spinOnce();
+        //     }
+        //     break;
+        // }
     }
 
     dolog("resultsCB - end");
@@ -834,6 +871,11 @@ int main(int argc, char** argv){  //pass TEAMSIZE GRAPH ALGORITHM
   initialize_sub = nh.subscribe("/initialize", 100, initCB); 
   initialize_pub = nh.advertise<patrolling_sim::Initialize_Message>("/initialize", 100);
   
+  interference_sub = nh.subscribe<patrolling_sim::Interference_Message>("/interference", 100, interferenceCB);
+  interference_pub = nh.advertise<patrolling_sim::Interference_Message>("/interference", 10); //only concerned about the most recent   
+
+  targetReached_sub = nh.subscribe<patrolling_sim::TargetReached_Message>("/targetReached", 100, targetReachedCB);
+  targetReached_pub = nh.advertise<patrolling_sim::TargetReached_Message>("/targetReached", 10); //only concerned about the most recent   
 
   // //Subscribe "results" from robots
   // results_sub = nh.subscribe("results", 100, resultsCB);   

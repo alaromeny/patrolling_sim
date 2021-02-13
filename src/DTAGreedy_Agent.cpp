@@ -45,6 +45,7 @@
 #include <tf/transform_listener.h>
 #include <nav_msgs/Odometry.h>
 #include <std_msgs/Int16MultiArray.h>
+#include <patrolling_sim/DTAGreedy_Message.h>
 
 #include "PatrolAgent.h"
 #include "algorithms.h"
@@ -60,6 +61,9 @@ private:
     double theta_idl, theta_cost, theta_odist;
     float origin_x, origin_y, origin_theta;
     pthread_mutex_t lock;
+    ros::Subscriber DTAGreedy_results_sub;
+    ros::Publisher  DTAGreedy_results_pub;
+
     
 public:
     DTAGreedy_Agent() : cf(CONFIG_FILENAME)
@@ -71,12 +75,15 @@ public:
     virtual void init(int argc, char** argv);
     virtual int compute_next_vertex();
     virtual void send_results();
-    virtual void receive_results();    
+    virtual void receive_results();   
+    virtual void do_send_ROS_message();
+    virtual void ROS_resultsCB(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg); 
     
     double compute_cost(int vertex);
     double distanceFromOrigin(int vertex);
     double utility(int vertex);
     void update_global_idleness();
+
 };
 
 void DTAGreedy_Agent::init(int argc, char** argv) {
@@ -84,6 +91,7 @@ void DTAGreedy_Agent::init(int argc, char** argv) {
     printf("DTAGreedy_Agent::init\n");
     
     PatrolAgent::init(argc,argv);
+    ros::NodeHandle nh;
   
     global_instantaneous_idleness = new double[dimension];
     for(size_t i=0; i<dimension; i++) {
@@ -106,6 +114,10 @@ void DTAGreedy_Agent::init(int argc, char** argv) {
     getRobotPose(value,origin_x, origin_y, origin_theta);
     ROS_INFO("Robot %d: Initial pose %.1f %.1f %.1f",value,origin_x, origin_y, origin_theta);
     
+    //overwrite the patrolAgent pub and sub with custom messages
+    DTAGreedy_results_pub = nh.advertise<patrolling_sim::DTAGreedy_Message>("DTAGreedy_results", 100);
+    DTAGreedy_results_sub = nh.subscribe<patrolling_sim::DTAGreedy_Message>("DTAGreedy_results", 10,  boost::bind(&DTAGreedy_Agent::ROS_resultsCB, this, _1));  
+  
 }
 
 double DTAGreedy_Agent::compute_cost(int vertex)
@@ -273,6 +285,49 @@ void DTAGreedy_Agent::receive_results() {
     }
     //printf("*** END ***\n");
 }
+
+
+
+void DTAGreedy_Agent::do_send_ROS_message() {
+    // int16 sender_ID
+    // int16 next_vertex
+    // int16[] global_idleness
+
+
+    int value = ID_ROBOT;
+    if (value==-1){value=0;}
+
+    // [ID,msg_type,vertex,intention]
+    patrolling_sim::DTAGreedy_Message msg;
+    msg.sender_ID = value;
+    msg.next_vertex = next_vertex;
+    msg.global_idleness.clear();
+
+
+    for(size_t i=0; i<dimension; i++) {
+        // convert in 1/10 of secs (integer value) Max value 3276.8 second (> 50 minutes) !!!
+        int ms = (int)(global_instantaneous_idleness[i]*10);
+        if (ms>32768) { // Int16 is used to send messages
+            ROS_WARN("Wrong conversion when sending idleness value in messages!!!");
+            ms=32000;
+        }
+        if ((int)i==next_vertex) ms=0;
+        msg.global_idleness.push_back(ms);
+    }
+
+
+    DTAGreedy_results_pub.publish(msg);
+    ros::spinOnce();
+}
+
+void DTAGreedy_Agent::ROS_resultsCB(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg) { 
+    
+    printf("Robot Callback %d\n", ID_ROBOT); 
+    
+    ros::spinOnce();
+  
+}
+
 
 int main(int argc, char** argv) {
   

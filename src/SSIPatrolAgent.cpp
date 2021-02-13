@@ -143,6 +143,7 @@ bool SSIPatrolAgent::all_selected(bool* sv){
 void SSIPatrolAgent::init(int argc, char** argv) {
         
     PatrolAgent::init(argc,argv);
+    ros::NodeHandle nh;
 
     //initialize structures
     next_vertex = -1; 
@@ -179,6 +180,9 @@ void SSIPatrolAgent::init(int argc, char** argv) {
     paramss << timeout << "," << theta_idl << "," << theta_cost << "," << theta_hop << "," << threshold << "," << hist;
 
     ros::param::set("/algorithm_params",paramss.str());
+
+    DTAP_results_pub = nh.advertise<patrolling_sim::DTAP_Message>("DTAP_results", 100);
+    DTAP_results_sub = nh.subscribe<patrolling_sim::DTAP_Message>("DTAP_results", 10,  boost::bind(&SSIPatrolAgent::ROS_resultsCB, this, _1));  
 
 }
 
@@ -810,5 +814,39 @@ void SSIPatrolAgent::receive_results() {
 }
 
 
+void SSIPatrolAgent::do_send_ROS_message(int nv,double bv) {
+    // int16 sender_ID
+    // int16 next_vertex_index
+    // int16 bid_value
 
+    int value = ID_ROBOT;
+    if (value==-1){value=0;}
+
+    int ibv = (int)(bv);
+    if (ibv>32767) { // Int16 is used to send messages
+        ROS_WARN("Wrong conversion when sending bid value in messages!!!");
+        ibv=32000;
+    }
+
+    // [ID,msg_type,vertex,intention]
+    patrolling_sim::DTAP_Message msg;
+    msg.sender_ID = value;
+    msg.next_vertex_index = nv;
+    msg.bid_value = ibv;
+   
+    DTAP_results_pub.publish(msg);
+    ros::spinOnce();
+}
+
+
+
+
+
+void SSIPatrolAgent::ROS_resultsCB(const patrolling_sim::DTAP_Message::ConstPtr& msg) { 
+    
+    printf("Robot Callback %d\n", ID_ROBOT); 
+    
+    ros::spinOnce();
+  
+}
 
