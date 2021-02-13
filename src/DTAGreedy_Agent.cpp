@@ -66,8 +66,8 @@ private:
 
     
 public:
-    DTAGreedy_Agent() : cf(CONFIG_FILENAME)
-    {   // lock = PTHREAD_MUTEX_INITIALIZER; 
+    DTAGreedy_Agent() : cf(CONFIG_FILENAME) {
+       // lock = PTHREAD_MUTEX_INITIALIZER; 
         pthread_mutex_init(&lock, NULL);
         
     }
@@ -78,6 +78,7 @@ public:
     virtual void receive_results();   
     virtual void do_send_ROS_message();
     virtual void ROS_resultsCB(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg); 
+    virtual void ROS_receive_results(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg);
     
     double compute_cost(int vertex);
     double distanceFromOrigin(int vertex);
@@ -120,8 +121,7 @@ void DTAGreedy_Agent::init(int argc, char** argv) {
   
 }
 
-double DTAGreedy_Agent::compute_cost(int vertex)
-{
+double DTAGreedy_Agent::compute_cost(int vertex) {
     uint elem_s_path;
     int *shortest_path = new int[dimension]; 
     int id_neigh;
@@ -155,8 +155,7 @@ double DTAGreedy_Agent::utility(int vertex) {
     return U;
 }
 
-void DTAGreedy_Agent::update_global_idleness() 
-{   
+void DTAGreedy_Agent::update_global_idleness() {   
     double now = ros::Time::now().toSec();
     
     pthread_mutex_lock(&lock);
@@ -322,10 +321,60 @@ void DTAGreedy_Agent::do_send_ROS_message() {
 
 void DTAGreedy_Agent::ROS_resultsCB(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg) { 
     
-    printf("Robot Callback %d\n", ID_ROBOT); 
-    
+    ROS_receive_results(msg);
     ros::spinOnce();
   
+}
+void DTAGreedy_Agent::ROS_receive_results(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg) {
+
+    // int16 sender_ID
+    // int16 next_vertex
+    // int16[] global_idleness
+
+
+    double now = ros::Time::now().toSec();
+    int id_sender = msg->sender_ID;
+
+    int value = ID_ROBOT;
+    if (value==-1){
+        value=0;
+    }
+    if (id_sender==value) {
+        return;
+    }
+
+    pthread_mutex_lock(&lock);
+    for(size_t i=0; i<dimension; i++) {
+        int ms = msg->global_idleness[i];
+        //printf("    -- received from %d remote-GII[%lu] = %d\n",id_sender,i,ms);
+        //printf("  - %d - \n",ms);
+        double rgi = (double)ms/10.0; // convert back in seconds
+        //printf("  - i=%lu - \n",i);
+        //printf("  - global...[i]=%.1f - \n",global_instantaneous_idleness[i]);
+        if (isnan(global_instantaneous_idleness[i])) {
+            printf("NAN Exiting!!!"); return;
+        }
+
+        global_instantaneous_idleness[i] = std::min(
+            global_instantaneous_idleness[i]+(now-last_update_idl), rgi);
+        //printf("    ++ GII[%lu] = %.1f (r=%.1f)\n",i,global_instantaneous_idleness[i],rgi);
+    }
+    pthread_mutex_unlock(&lock);
+    last_update_idl = now;
+
+    int sender_next_vertex = msg->next_vertex;
+    
+    // interrupt path if moving to the same target node
+    if (sender_next_vertex == next_vertex) { // two robots are going to the same node
+        ROS_INFO("Robots %d and %d are both going to vertex %d",value,id_sender,next_vertex);
+        ROS_INFO("Robot %d: STOP and choose another target",value);
+        // change my destination
+        cancelGoal(); // stop the current behavior
+        current_vertex = next_vertex; // simulate that the goal vertex has been reached (not sent to the monitor)
+        next_vertex = compute_next_vertex(); // compute next vertex (will be different from current vertex)
+        sendGoal(next_vertex);
+    }
+    printf("Robot %d processed message from robot %d\n", value, id_sender); 
 }
 
 
