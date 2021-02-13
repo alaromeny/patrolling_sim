@@ -46,6 +46,8 @@
 #include <std_msgs/Int16MultiArray.h>
 #include <algorithm>
 #include <stdio.h>
+#include <patrolling_sim/DTAGreedy_Message.h>
+#include <patrolling_sim/DTAP_Message.h>
 
 #include "PatrolAgent.h"
 #include "algorithms.h"
@@ -70,6 +72,12 @@ class SSIPatrolAgent: public PatrolAgent {
 protected:
     // Mutex to update global_idleness safely
     pthread_mutex_t lock;
+
+    //to attach DTAP specific topic
+    
+    ros::Publisher  DTAP_results_pub, DTAGreedy_results_pub;
+    ros::Subscriber DTAP_results_sub, DTAGreedy_results_sub;
+
     
 	//true if I am selecting the first vertex to go to	
     bool first_vertex; 
@@ -186,6 +194,13 @@ protected:
     void bid_msg_handler(std::vector<int>::const_iterator it, int sender_id);
 
     void wait();	
+
+    virtual void do_send_ROS_message(int next_vertex, double bid_value, int type);
+    virtual void do_send_ROS_greedyMessage();
+    virtual void ROS_greedyresultsCB(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg);
+    virtual void ROS_resultsCB(const patrolling_sim::DTAP_Message::ConstPtr& msg);
+    virtual void ROS_receive_greedyResults(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg);
+    virtual void ROS_receive_results(const patrolling_sim::DTAP_Message::ConstPtr& msg);
 
 
 public:

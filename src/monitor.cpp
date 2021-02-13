@@ -53,6 +53,10 @@
 #include <tf/transform_listener.h>
 #include <std_msgs/Int16MultiArray.h>
 #include <std_msgs/String.h>
+#include <patrolling_sim/Initialize_Message.h>
+#include <patrolling_sim/Interference_Message.h>
+#include <patrolling_sim/TargetReached_Message.h>
+
 
 using namespace std;
 
@@ -80,9 +84,10 @@ using std::endl;
 
 typedef unsigned int uint;
 
-ros::Subscriber results_sub;
-ros::Publisher results_pub, screenshot_pub;
+ros::Subscriber results_sub, initialize_sub, interference_sub, targetReached_sub;
+ros::Publisher  results_pub, initialize_pub, interference_pub, targetReached_pub, screenshot_pub;
 ros::ServiceServer GotoStartPosMethod;
+
 
 //Initialization:
 bool initialize = true; // Initialization flag
@@ -140,33 +145,127 @@ FILE *idlfile;
 FILE *logfile = NULL;
 
 void dolog(const char *str) {
-  if (logfile) {
-    fprintf(logfile,"%s\n",str);
-    fflush(logfile);
-  }
+    if (logfile) {
+        fprintf(logfile,"%s\n",str);
+        fflush(logfile);
+    }
 }
 
 void update_stats(int id_robot, int goal);
 
 
-double get_last_goal_reached(int k)
-{
-  pthread_mutex_lock(&lock_last_goal_reached);
-  double r = last_goal_reached[k];
-  pthread_mutex_unlock(&lock_last_goal_reached);
-  return r;
+double get_last_goal_reached(int k) {
+    pthread_mutex_lock(&lock_last_goal_reached);
+    double r = last_goal_reached[k];
+    pthread_mutex_unlock(&lock_last_goal_reached);
+    return r;
 }
 
-void set_last_goal_reached(int k, double val)
-{
-  pthread_mutex_lock(&lock_last_goal_reached);
-  last_goal_reached[k] = val;
-  pthread_mutex_unlock(&lock_last_goal_reached);
+void set_last_goal_reached(int k, double val) {
+    pthread_mutex_lock(&lock_last_goal_reached);
+    last_goal_reached[k] = val;
+    pthread_mutex_unlock(&lock_last_goal_reached);
+}
+
+void initCB(const patrolling_sim::Initialize_Message::ConstPtr& msg) {
+    // int16 sender_ID
+    // int16 initialize
+
+    int id_robot = msg->sender_ID;
+    int initialize_message = msg->initialize;
+
+    if (initialize){ 
+        if (init_robots[id_robot] == false){   //receive init msg: "ID,msg_type,1"
+            printf("Robot [ID = %d] is Active!\n", id_robot);
+            init_robots[id_robot] = true;
+
+            //Patch D.Portugal (needed to support other simulators besides Stage):
+            double current_time = ros::Time::now().toSec();
+            //initialize last_goal_reached:
+            set_last_goal_reached(id_robot,current_time);
+
+            cnt++;
+        } 
+        if (cnt==teamsize){
+              
+              // check if robots need to travel to starting positions
+            while(goto_start_pos){ //if or while (?)
+                  
+                patrolling_sim::GoToStartPosSrv::Request Req;
+                Req.teamsize.data = teamsize;
+                Req.sleep_between_goals.data = 20; //time in secs to wait before sending goals to each different robot
+                patrolling_sim::GoToStartPosSrv::Response Rep;  
+
+                ROS_INFO("Sending all robots to starting position.");
+                  
+                if (!ros::service::call("/GotoStartPosSrv", Req, Rep)){ //blocking call
+                    ROS_ERROR("Error invoking /GotoStartPosSrv.");  
+                    ROS_ERROR("Sending robots to initial position failed.");
+                    ros::shutdown(); //make sense for while implementation
+                    return;
+                }else{
+                    goto_start_pos = false;
+                    system("rosnode kill GoToStartPos &");  //we don't need the service anymore.
+                }               
+            }
+                  
+            printf("All Robots GO!\n");
+            initialize = false;
+              
+            //Clock Reset:
+            time_zero = ros::Time::now().toSec();
+            last_report_time = time_zero; 
+                              
+            time (&real_time_zero);
+            printf("Time zero = %.1f (sim) = %lu (real) \n", time_zero,(long)real_time_zero);
+
+            patrolling_sim::Initialize_Message msg;
+            //this is monitorID
+            msg.sender_ID  = -1;
+            //tell robots it's time to sync
+            msg.initialize = 1;
+            initialize_pub.publish(msg);
+            ros::spinOnce();
+        }
+    }
+}
+
+void interferenceCB(const patrolling_sim::Interference_Message::ConstPtr& msg) {
+    // int16 ID_sender
+    // int16 ID_target
+
+    int id_sender = msg->sender_ID;
+    int id_target = msg->target_ID;
+
+    //interference: [ID,msg_type]
+    if (initialize==false){
+        ROS_INFO("Robot %d sent interference.\n", id_sender); 
+        interference_cnt++;
+        ros::spinOnce();
+    }
 }
 
 
-void resultsCB(const std_msgs::Int16MultiArray::ConstPtr& msg) 
-{
+void targetReachedCB(const patrolling_sim::TargetReached_Message::ConstPtr& msg){
+
+    // int16 sender_ID
+    // int16 vertex_reached
+
+    int id_robot = msg->sender_ID;
+    int goal = msg->vertex_reached;
+
+    //message sent from robot to let everyone know it reached a target
+    if (initialize==false){ 
+        ROS_INFO("Robot %d reached Goal %d.\n", id_robot, goal); 
+        fflush(stdout);
+        goal_reached = true;
+        update_stats(id_robot, goal);
+        ros::spinOnce();
+    }
+}
+
+
+void resultsCB(const std_msgs::Int16MultiArray::ConstPtr& msg)  {
     dolog("resultsCB - begin");
 
     std::vector<signed short>::const_iterator it = msg->data.begin();    
@@ -182,268 +281,165 @@ void resultsCB(const std_msgs::Int16MultiArray::ConstPtr& msg)
     int id_robot = vresults[0];  // robot sending the message
     int msg_type = vresults[1];  // message type
 
-    switch(msg_type) {
-        case INITIALIZE_MSG_TYPE:
-        {
-        if (initialize && vresults[2]==1){ 
-            if (init_robots[id_robot] == false){   //receive init msg: "ID,msg_type,1"
-                printf("Robot [ID = %d] is Active!\n", id_robot);
-                init_robots[id_robot] = true;
-                
-                //Patch D.Portugal (needed to support other simulators besides Stage):
-                double current_time = ros::Time::now().toSec();
-                //initialize last_goal_reached:
-                set_last_goal_reached(id_robot,current_time);
-                
-                cnt++;
-            } 
-            if (cnt==teamsize){
-                
-                // check if robots need to travel to starting positions
-                while(goto_start_pos){ //if or while (?)
-                    
-                    patrolling_sim::GoToStartPosSrv::Request Req;
-                    Req.teamsize.data = teamsize;
-                    Req.sleep_between_goals.data = 20; //time in secs to wait before sending goals to each different robot
-                    patrolling_sim::GoToStartPosSrv::Response Rep;	
-                    
-                    ROS_INFO("Sending all robots to starting position.");
-                    
-                    if (!ros::service::call("/GotoStartPosSrv", Req, Rep)){ //blocking call
-                        ROS_ERROR("Error invoking /GotoStartPosSrv.");	
-                        ROS_ERROR("Sending robots to initial position failed.");
-                        ros::shutdown(); //make sense for while implementation
-                        return;
-                        
-                    }else{
-                        goto_start_pos = false;
-                        system("rosnode kill GoToStartPos &");  //we don't need the service anymore.
-                    }               
-                    
-                }
-                    
-                printf("All Robots GO!\n");
-                initialize = false;
-                    
-                //Clock Reset:
-                time_zero = ros::Time::now().toSec();
-                last_report_time = time_zero; 
-                                    
-                time (&real_time_zero);
-                printf("Time zero = %.1f (sim) = %lu (real) \n", time_zero,(long)real_time_zero);
-
-                std_msgs::Int16MultiArray msg;  // -1,msg_type,100,0,0
-                msg.data.clear();
-                msg.data.push_back(-1);
-                msg.data.push_back(INITIALIZE_MSG_TYPE);
-                msg.data.push_back(100);  // Go !!!
-                results_pub.publish(msg);
-                ros::spinOnce();      
-                
-                }
-            }
-            
-        //}
-        break;
-        }
-        
-        case TARGET_REACHED_MSG_TYPE:
-        {
-            //goal sent by a robot during the experiment [ID,msg_type,vertex,intention,0]
-            if (initialize==false){ 
-                goal = vresults[2];
-                ROS_INFO("Robot %d reached Goal %d.\n", id_robot, goal); 
-                fflush(stdout);
-                goal_reached = true;
-                update_stats(id_robot, goal);
-                ros::spinOnce();
-            }
-            break;
-        }
-         
-        case INTERFERENCE_MSG_TYPE:
-        {
-            //interference: [ID,msg_type]
-            if (initialize==false){
-                ROS_INFO("Robot %d sent interference.\n", id_robot); 
-                interference_cnt++;
-                ros::spinOnce();
-            }
-            break;
-        }
-    }
+    printf("Still getting messages on RESULTSCB, type is: %d, from robot: %d\n", msg_type, id_robot);
 
     dolog("resultsCB - end");
 
 }
 
 void finish_simulation (){ //-1,msg_type,999,0,0
-  ROS_INFO("Sending stop signal to patrol agents.");
-  std_msgs::Int16MultiArray msg;  
-  msg.data.clear();
-  msg.data.push_back(-1);
-  msg.data.push_back(INITIALIZE_MSG_TYPE);
-  msg.data.push_back(999);  // end of the simulation
-  results_pub.publish(msg);
-  ros::spinOnce();  
+    ROS_INFO("Sending stop signal to patrol agents.");
+    std_msgs::Int16MultiArray msg;  
+    msg.data.clear();
+    msg.data.push_back(-1);
+    msg.data.push_back(INITIALIZE_MSG_TYPE);
+    msg.data.push_back(999);  // end of the simulation
+    // results_pub.publish(msg);
+    ros::spinOnce();  
 
 #if EXTENDED_STAGE  
-  ROS_INFO("Taking a screenshot of the simulator...");
-  std_msgs::String ss;
-  ss.data = "screenshot";
-  screenshot_pub.publish(ss);
+    ROS_INFO("Taking a screenshot of the simulator...");
+    std_msgs::String ss;
+    ss.data = "screenshot";
+    screenshot_pub.publish(ss);
 #endif
   
-  ros::spinOnce();  
+    ros::spinOnce();  
 }
 
 // return the median value in a vector of size "dimension" floats pointed to by a
-double Median( double *a, uint dimension )
-{
-   uint table_size = dimension/2;   
-   if(dimension % 2 != 0){ //odd
-   table_size++; 
-   }   
-   if (table_size==0) {table_size = 1;}
-   
-   double left[table_size], right[table_size], median, *p;
-   unsigned char nLeft, nRight;
+double Median( double *a, uint dimension ) {
+    uint table_size = dimension/2;
 
-   // pick first value as median candidate
-   p = a;
-   median = *p++;
-   nLeft = nRight = 1;
+    if(dimension % 2 != 0){ //odd
+        table_size++;
+    }   
+    if (table_size==0) {
+        table_size = 1;
+    }
 
-   for(;;)
-   {
+    double left[table_size], right[table_size], median, *p;
+    unsigned char nLeft, nRight;
+
+    // pick first value as median candidate
+    p = a;
+    median = *p++;
+    nLeft = nRight = 1;
+
+    for(;;) {
        // get next value
-       double val = *p++;
+        double val = *p++;
 
-       // if value is smaller than median, append to left heap
-       if( val < median )
-       {
-           // move biggest value to the heap top
-           unsigned char child = nLeft++, parent = (child - 1) / 2;
-           while( parent && val > left[parent] )
-           {
-               left[child] = left[parent];
-               child = parent;
-               parent = (parent - 1) / 2;
-           }
-           left[child] = val;
+        // if value is smaller than median, append to left heap
+        if( val < median ) {
+            // move biggest value to the heap top
+            unsigned char child = nLeft++, parent = (child - 1) / 2;
+            while( parent && val > left[parent] ) {
+                left[child] = left[parent];
+                child = parent;
+                parent = (parent - 1) / 2;
+            }
+            left[child] = val;
 
-           // if left heap is full
-           if( nLeft == table_size )
-           {
-               // for each remaining value
-               for( unsigned char nVal = dimension - (p - a); nVal; --nVal )
-               {
-                   // get next value
-                   val = *p++;
+            // if left heap is full
+            if( nLeft == table_size ) {
+                // for each remaining value
+                for( unsigned char nVal = dimension - (p - a); nVal; --nVal ) {
+                    // get next value
+                    val = *p++;
 
-                   // if value is to be inserted in the left heap
-                   if( val < median )
-                   {
-                       child = left[2] > left[1] ? 2 : 1;
-                       if( val >= left[child] )
+                    // if value is to be inserted in the left heap
+                    if( val < median ) {
+                        child = left[2] > left[1] ? 2 : 1;
+                        if( val >= left[child] )
                            median = val;
-                       else
-                       {
-                           median = left[child];
-                           parent = child;
-                           child = parent*2 + 1;
-                           while( child < table_size )
-                           {
-                               if( child < table_size-1 && left[child+1] > left[child] )
-                                   ++child;
-                               if( val >= left[child] )
-                                   break;
-                               left[parent] = left[child];
-                               parent = child;
-                               child = parent*2 + 1;
-                           }
-                           left[parent] = val;
-                       }
-                   }
-               }
-               return median;
-           }
-       }
+                        else {
+                            median = left[child];
+                            parent = child;
+                            child = parent*2 + 1;
+                            while( child < table_size ) {
+                                if( child < table_size-1 && left[child+1] > left[child] )
+                                    ++child;
+                                if( val >= left[child] )
+                                    break;
+                                left[parent] = left[child];
+                                parent = child;
+                                child = parent*2 + 1;
+                            }
+                            left[parent] = val;
+                        }
+                    }
+                }
+                return median;
+            }
+        }
 
-       // else append to right heap
-       else
-       {
-           // move smallest value to the heap top
-           unsigned char child = nRight++, parent = (child - 1) / 2;
-           while( parent && val < right[parent] )
-           {
-               right[child] = right[parent];
-               child = parent;
-               parent = (parent - 1) / 2;
-           }
-           right[child] = val;
+        // else append to right heap
+        else {
+            // move smallest value to the heap top
+            unsigned char child = nRight++, parent = (child - 1) / 2;
+            while( parent && val < right[parent] ) {
+                right[child] = right[parent];
+                child = parent;
+                parent = (parent - 1) / 2;
+            }
+            right[child] = val;
 
-           // if right heap is full
-           if( nRight == 14 )
-           {
-               // for each remaining value
-               for( unsigned char nVal = dimension - (p - a); nVal; --nVal )
-               {
-                   // get next value
-                   val = *p++;
+            // if right heap is full
+            if( nRight == 14 ) {
+                // for each remaining value
+                for( unsigned char nVal = dimension - (p - a); nVal; --nVal ) {
+                    // get next value
+                    val = *p++;
 
-                   // if value is to be inserted in the right heap
-                   if( val > median )
-                   {
-                       child = right[2] < right[1] ? 2 : 1;
-                       if( val <= right[child] )
-                           median = val;
-                       else
-                       {
-                           median = right[child];
-                           parent = child;
-                           child = parent*2 + 1;
-                           while( child < table_size )
-                           {
-                               if( child < 13 && right[child+1] < right[child] )
-                                   ++child;
-                               if( val <= right[child] )
-                                   break;
-                               right[parent] = right[child];
-                               parent = child;
-                               child = parent*2 + 1;
-                           }
-                           right[parent] = val;
-                       }
-                   }
-               }
-               return median;
-           }
-       }
-   }
+                    // if value is to be inserted in the right heap
+                    if( val > median ) {
+                        child = right[2] < right[1] ? 2 : 1;
+                        if( val <= right[child] )
+                            median = val;
+                        else {
+                            median = right[child];
+                            parent = child;
+                            child = parent*2 + 1;
+                            while( child < table_size ) {
+                                if( child < 13 && right[child+1] < right[child] )
+                                    ++child;
+                                if( val <= right[child] )
+                                    break;
+                                right[parent] = right[child];
+                                parent = child;
+                                child = parent*2 + 1;
+                            }
+                            right[parent] = val;
+                        }
+                    }
+                }
+                return median;
+            }
+        }
+    }
 }
 
 
 uint calculate_patrol_cycle ( int *nr_visits, uint dimension ){
-  dolog("    calculate_patrol_cycle - begin");
-  uint result = INT_MAX;
-  uint imin=0;
-  for (uint i=0; i<dimension; i++){
-    if ((uint)nr_visits[i] < result){
-      result = nr_visits[i]; imin=i;
+    dolog("    calculate_patrol_cycle - begin");
+    uint result = INT_MAX;
+    uint imin=0;
+    for (uint i=0; i<dimension; i++) {
+        if ((uint)nr_visits[i] < result) {
+            result = nr_visits[i]; imin=i;
+        }
     }
-  }
-  //printf("  --- complete patrol: visits of %d : %d\n",imin,result);
-  dolog("    calculate_patrol_cycle - end");
-  return result;  
+    //printf("  --- complete patrol: visits of %d : %d\n",imin,result);
+    dolog("    calculate_patrol_cycle - end");
+    return result;  
 }
 
-void scenario_name(char* name, const char* graph_file, const char* teamsize_str)
-{
+void scenario_name(char* name, const char* graph_file, const char* teamsize_str) {
     uint i, start_char=0, end_char = strlen(graph_file)-1;
     
-    for (i=0; i<strlen(graph_file); i++){
-        if(graph_file[i]=='/' && i < strlen(graph_file)-1){
+    for (i=0; i<strlen(graph_file); i++) {
+        if(graph_file[i]=='/' && i < strlen(graph_file)-1) {
             start_char = i+1;
         }
         
@@ -523,15 +519,15 @@ bool check_dead_robots() {
       double l = get_last_goal_reached(i);
       double delta = current_time - l;
       // printf("DEBUG dead robot: %d   %.1f - %.1f = %.1f\n",i,current_time,l,delta);
-      if (delta>DEAD_ROBOT_TIME*0.75) {
-        printf("Robot %lu: dead robot - delta = %.1f / %.1f \n",i,delta,DEAD_ROBOT_TIME);
-        system("play -q beep.wav");
-      }
-      if (delta>DEAD_ROBOT_TIME) {
-          // printf("Dead robot %d. Time from last goal reached = %.1f\n",i,delta);
-          r=true;
-          break;
-      }
+        if (delta>DEAD_ROBOT_TIME*0.75) {
+            printf("Robot %lu: dead robot - delta = %.1f / %.1f \n",i,delta,DEAD_ROBOT_TIME);
+            system("play -q beep.wav");
+        }
+        if (delta>DEAD_ROBOT_TIME) {
+            // printf("Dead robot %d. Time from last goal reached = %.1f\n",i,delta);
+            r=true;
+            break;
+        }
     }
 
     dolog("  check_dead_robots - end");
@@ -631,60 +627,61 @@ int main(int argc, char** argv){  //pass TEAMSIZE GRAPH ALGORITHM
   //ex: "rosrun patrolling_sim monitor maps/example/example.graph MSP 2"
   
 //   uint teamsize;
-  char teamsize_str[3];
-  teamsize = atoi(argv[3]);
+    char teamsize_str[3];
+    teamsize = atoi(argv[3]);
   
-  if ( teamsize >= NUM_MAX_ROBOTS || teamsize <1 ){
-    ROS_INFO("The Teamsize must be an integer number between 1 and %d", NUM_MAX_ROBOTS);
-    return 0;
-  }else{
-    strcpy (teamsize_str, argv[3]); 
+    if ( teamsize >= NUM_MAX_ROBOTS || teamsize <1 ){
+        ROS_INFO("The Teamsize must be an integer number between 1 and %d", NUM_MAX_ROBOTS);
+       return 0;
+    }else{
+        strcpy (teamsize_str, argv[3]); 
 //     printf("teamsize: %s\n", teamsize_str);
 //     printf("teamsize: %u\n", teamsize);
-  }
+    }
   
   
-  algorithm = string(argv[2]);
-  printf("Algorithm: %s\n",algorithm.c_str());
-  
-  string mapname = string(argv[1]);
-  string graph_file = "maps/"+mapname+"/"+mapname+".graph";
+    algorithm = string(argv[2]);
+    printf("Algorithm: %s\n",algorithm.c_str());
 
-  printf("Graph: %s\n",graph_file.c_str());
+    string mapname = string(argv[1]);
+    string graph_file = "maps/"+mapname+"/"+mapname+".graph";
+
+    printf("Graph: %s\n",graph_file.c_str());
      
-  /** D.Portugal: needed in case you "rosrun" from another folder **/     
-  chdir(PS_path.c_str());
-  
-  //Check Graph Dimension:
-  dimension = GetGraphDimension(graph_file.c_str());
-  if (dimension>MAX_DIMENSION) {
-    cout << "ERROR!!! dimension > MAX_DIMENSION (static value) !!!" << endl;
-    abort();
-  }
-  printf("Dimension: %u\n",(uint)dimension);
-   
-  char hostname[80];
-    
-  int r = gethostname(hostname,80);
-  if (r<0)
-    strcpy(hostname,"default");
-    
-  printf("Host name: %s\n",hostname);
+    /** D.Portugal: needed in case you "rosrun" from another folder **/     
+    chdir(PS_path.c_str());
+
+    //Check Graph Dimension:
+    dimension = GetGraphDimension(graph_file.c_str());
+    if (dimension>MAX_DIMENSION) {
+        cout << "ERROR!!! dimension > MAX_DIMENSION (static value) !!!" << endl;
+        abort();
+    }
+    printf("Dimension: %u\n",(uint)dimension);
+
+    char hostname[80];
+
+    int r = gethostname(hostname,80);
+    if (r<0){
+        strcpy(hostname,"default");
+    }
+
+    printf("Host name: %s\n",hostname);
        
   
   
-  for (size_t i=0; i<dimension; i++){
-    number_of_visits[i] = -1;  // first visit should not be cnted for avg
-    current_idleness[i] = 0.0;
-    last_visit[i] = 0.0;
-  }
+    for (size_t i=0; i<dimension; i++){
+        number_of_visits[i] = -1;  // first visit should not be cnted for avg
+        current_idleness[i] = 0.0;
+        last_visit[i] = 0.0;
+    }
   
-  for (size_t i=0; i<NUM_MAX_ROBOTS; i++){
-    init_robots[i] = false;
-    last_goal_reached[i] = 0.0;
-  }
+    for (size_t i=0; i<NUM_MAX_ROBOTS; i++){
+       init_robots[i] = false;
+       last_goal_reached[i] = 0.0;
+    }
 
-  bool dead = false; // check if there is a dead robot
+    bool dead = false; // check if there is a dead robot
     
     bool simrun, simabort; // check if simulation is running and if it has been aborted by the user
 
@@ -705,14 +702,18 @@ int main(int argc, char** argv){  //pass TEAMSIZE GRAPH ALGORITHM
     
     struct stat st;
     
-    if (stat(path1.c_str(), &st) != 0)
-      mkdir(path1.c_str(), 0777);
-    if (stat(path2.c_str(), &st) != 0)
-      mkdir(path2.c_str(), 0777);
-    if (stat(path3.c_str(), &st) != 0)
-      mkdir(path3.c_str(), 0777);
-    if (stat(path4.c_str(), &st) != 0)
-      mkdir(path4.c_str(), 0777);
+    if (stat(path1.c_str(), &st) != 0){
+        mkdir(path1.c_str(), 0777);
+    }
+    if (stat(path2.c_str(), &st) != 0){
+        mkdir(path2.c_str(), 0777);
+    }
+    if (stat(path3.c_str(), &st) != 0){
+        mkdir(path3.c_str(), 0777);
+    }
+    if (stat(path4.c_str(), &st) != 0){
+        mkdir(path4.c_str(), 0777);
+    }
 
     printf("Path experimental results: %s\n",path4.c_str());
     
@@ -763,34 +764,49 @@ int main(int argc, char** argv){  //pass TEAMSIZE GRAPH ALGORITHM
 #endif
     
   //Wait for all robots to connect! (Exchange msgs)
-  ros::init(argc, argv, "monitor");
-  ros::NodeHandle nh;
+    ros::init(argc, argv, "monitor");
+    ros::NodeHandle nh;
+
+    initialize_sub = nh.subscribe("/initialize", 100, initCB); 
+    initialize_pub = nh.advertise<patrolling_sim::Initialize_Message>("/initialize", 100);
+
+    interference_sub = nh.subscribe<patrolling_sim::Interference_Message>("/interference", 100, interferenceCB);
+    interference_pub = nh.advertise<patrolling_sim::Interference_Message>("/interference", 10); //only concerned about the most recent   
+
+    targetReached_sub = nh.subscribe<patrolling_sim::TargetReached_Message>("/targetReached", 100, targetReachedCB);
+    targetReached_pub = nh.advertise<patrolling_sim::TargetReached_Message>("/targetReached", 10); //only concerned about the most recent   
+
+  // //Subscribe "results" from robots
+  // results_sub = nh.subscribe("results", 100, resultsCB);   
+  // //Publish data to "results"
+  // results_pub = nh.advertise<std_msgs::Int16MultiArray>("results", 100);
   
-  //Subscribe "results" from robots
-  results_sub = nh.subscribe("results", 100, resultsCB);   
-  
-  //Publish data to "results"
-  results_pub = nh.advertise<std_msgs::Int16MultiArray>("results", 100);
-  
+  // //Subscribe "results" from robots
+  // results_sub = nh.subscribe("results", 100, resultsCB);   
+  // //Publish data to "results"
+  // results_pub = nh.advertise<patrolling_sim::SEBS_Message>("results", 100);
+
+
+
 #if EXTENDED_STAGE  
-  screenshot_pub = nh.advertise<std_msgs::String>("/stageGUIRequest", 100);
+    screenshot_pub = nh.advertise<std_msgs::String>("/stageGUIRequest", 100);
 #endif    
 
-  double duration = 0.0, real_duration = 0.0;
+    double duration = 0.0, real_duration = 0.0;
   
-  ros::Rate loop_rate(30); //0.033 seconds or 30Hz
+    ros::Rate loop_rate(30); //0.033 seconds or 30Hz
   
-  nh.setParam("/simulation_running", "true");
-  nh.setParam("/simulation_abort", "false");
+    nh.setParam("/simulation_running", "true");
+    nh.setParam("/simulation_abort", "false");
   
-  if(ros::service::exists("/GotoStartPosSrv", false)){ //see if service has been advertised or not
-       goto_start_pos = true;  //if service exists: robots need to be sent to starting positions
-       ROS_INFO("/GotoStartPosSrv is advertised. Robots will be sent to starting positions.");
-  }else{
-      ROS_WARN("/GotoStartPosSrv does not exist. Assuming robots are already at starting positions.");
-  }
+    if(ros::service::exists("/GotoStartPosSrv", false)){ //see if service has been advertised or not
+         goto_start_pos = true;  //if service exists: robots need to be sent to starting positions
+         ROS_INFO("/GotoStartPosSrv is advertised. Robots will be sent to starting positions.");
+    }else{
+        ROS_WARN("/GotoStartPosSrv does not exist. Assuming robots are already at starting positions.");
+    }
     
-  double current_time = ros::Time::now().toSec();
+    double current_time = ros::Time::now().toSec();
   
     // read parameters
     if (! ros::param::get("/goal_reached_wait", goal_reached_wait)) {
@@ -819,177 +835,177 @@ int main(int argc, char** argv){  //pass TEAMSIZE GRAPH ALGORITHM
     }
 
 
-  // mutex for accessing last_goal_reached vector
-  pthread_mutex_init(&lock_last_goal_reached, NULL);
+    // mutex for accessing last_goal_reached vector
+    pthread_mutex_init(&lock_last_goal_reached, NULL);
 
 
 
-  while( ros::ok() ){
+    while( ros::ok() ){
     
-    dolog("main loop - begin");
+        dolog("main loop - begin");
 
-    if (!initialize){  //check if msg is goal or interference -> compute necessary results.
+        if (!initialize){  //check if msg is goal or interference -> compute necessary results.
             
-      // check time
-      double report_time = ros::Time::now().toSec();
+            // check time
+            double report_time = ros::Time::now().toSec();
       
-      // printf("### report time=%.1f  last_report_time=%.1f diff = %.1f\n",report_time, last_report_time, report_time - last_report_time);
+            // printf("### report time=%.1f  last_report_time=%.1f diff = %.1f\n",report_time, last_report_time, report_time - last_report_time);
       
-      // write results every TIMEOUT_WRITE_RESULTS_(FOREVER) seconds anyway
-      bool timeout_write_results;
+            // write results every TIMEOUT_WRITE_RESULTS_(FOREVER) seconds anyway
+            bool timeout_write_results;
       
 #if SIMULATE_FOREVER
-      timeout_write_results = (report_time - last_report_time > TIMEOUT_WRITE_RESULTS_FOREVER);
+            timeout_write_results = (report_time - last_report_time > TIMEOUT_WRITE_RESULTS_FOREVER);
 #else
-      timeout_write_results = (report_time - last_report_time > TIMEOUT_WRITE_RESULTS);
+            timeout_write_results = (report_time - last_report_time > TIMEOUT_WRITE_RESULTS);
 #endif
       
-      if ((patrol_cnt == complete_patrol) || timeout_write_results){ 
+            if ((patrol_cnt == complete_patrol) || timeout_write_results){ 
 
-        dolog("main loop - write results begin");
+                dolog("main loop - write results begin");
 
-        if (complete_patrol==1) {
-  	        ros::param::get("/algorithm_params", algparams);
-            if (! ros::param::get("/goal_reached_wait", goal_reached_wait))
-                goal_reached_wait = 0.0;
-        }
+                if (complete_patrol==1) {
+      	            ros::param::get("/algorithm_params", algparams);
+                    if (! ros::param::get("/goal_reached_wait", goal_reached_wait))
+                        goal_reached_wait = 0.0;
+                }
 
-        // write results every time a patrolling cycle is finished.
-        // or after some time
-        previous_avg_graph_idl = avg_graph_idl; //save previous avg idleness graph value
+                // write results every time a patrolling cycle is finished.
+                // or after some time
+                previous_avg_graph_idl = avg_graph_idl; //save previous avg idleness graph value
 
-        printf("******************************************\n");
-        printf("Patrol completed [%d]. Write to File!\n",complete_patrol);
+                printf("******************************************\n");
+                printf("Patrol completed [%d]. Write to File!\n",complete_patrol);
 
-        worst_avg_idleness = 0.0;
-        avg_graph_idl = 0.0;
-        stddev_graph_idl = 0.0;
-        avg_stddev_graph_idl = 0.0;
+                worst_avg_idleness = 0.0;
+                avg_graph_idl = 0.0;
+                stddev_graph_idl = 0.0;
+                avg_stddev_graph_idl = 0.0;
+                    
+                // Compute avg and stddev
+                double T0=0.0,T1=0.0,T2=0.0,S1=0.0;
+                for (size_t i=0; i<dimension; i++){
+                    T0++; T1+=avg_idleness[i]; T2+=avg_idleness[i]*avg_idleness[i];
+                    S1+=stddev_idleness[i];
+                    if ( avg_idleness[i] > worst_avg_idleness ){
+                        worst_avg_idleness = avg_idleness[i];
+                    }
+                }
+                    
+                avg_graph_idl = T1/T0;
+                stddev_graph_idl = 1.0/T0 * sqrt(T0*T2-T1*T1);
+                avg_stddev_graph_idl = S1/T0;
+                // global stats
+                gavg = gT1/gT0;
+                gstddev = 1.0/gT0 * sqrt(gT0*gT2-gT1*gT1);
+
+                uint i,tot_visits=0;
+                for (size_t i=0; i<dimension; i++){
+                    tot_visits += number_of_visits[i];
+                }
+                float avg_visits = (float)tot_visits/dimension;
+
+                duration = report_time-time_zero;
+                time_t real_now; time (&real_now); 
+                real_duration = (double)real_now - (double)real_time_zero;				
                 
-        // Compute avg and stddev
-        double T0=0.0,T1=0.0,T2=0.0,S1=0.0;
-        for (size_t i=0; i<dimension; i++){
-            T0++; T1+=avg_idleness[i]; T2+=avg_idleness[i]*avg_idleness[i];
-            S1+=stddev_idleness[i];
-            if ( avg_idleness[i] > worst_avg_idleness ){
-                worst_avg_idleness = avg_idleness[i];
-            }
-        }
+                printf("Node idleness\n");
+                printf("   worst_avg_idleness (graph) = %.2f\n", worst_avg_idleness);
+                printf("   avg_idleness (graph) = %.2f\n", avg_graph_idl);
+                median_graph_idl = Median (avg_idleness, dimension);
+                printf("   median_idleness (graph) = %.2f\n", median_graph_idl);
+                printf("   stddev_idleness (graph) = %.2f\n", stddev_graph_idl);
+
+                printf("Global idleness\n");
+                printf("   min = %.1f\n", min_idleness);
+                printf("   avg = %.1f\n", gavg);
+                printf("   stddev = %.1f\n", gstddev);
+                printf("   max = %.1f\n", max_idleness);
+
+                printf("\nInterferences\t%u\nInterference rate\t%.2f\nVisits\t%u\nAvg visits per node\t%.1f\nTime Elapsed\t%.1f\nReal Time Elapsed\t%.1f\n",
+                    interference_cnt,(float)interference_cnt/duration*60,tot_visits,avg_visits,duration,real_duration);
                 
-        avg_graph_idl = T1/T0;
-        stddev_graph_idl = 1.0/T0 * sqrt(T0*T2-T1*T1);
-        avg_stddev_graph_idl = S1/T0;
-        // global stats
-        gavg = gT1/gT0;
-        gstddev = 1.0/gT0 * sqrt(gT0*gT2-gT1*gT1);
-
-        uint i,tot_visits=0;
-        for (size_t i=0; i<dimension; i++){
-            tot_visits += number_of_visits[i];
-        }
-        float avg_visits = (float)tot_visits/dimension;
-
-        duration = report_time-time_zero;
-        time_t real_now; time (&real_now); 
-        real_duration = (double)real_now - (double)real_time_zero;				
-        
-        printf("Node idleness\n");
-        printf("   worst_avg_idleness (graph) = %.2f\n", worst_avg_idleness);
-        printf("   avg_idleness (graph) = %.2f\n", avg_graph_idl);
-        median_graph_idl = Median (avg_idleness, dimension);
-        printf("   median_idleness (graph) = %.2f\n", median_graph_idl);
-        printf("   stddev_idleness (graph) = %.2f\n", stddev_graph_idl);
-
-        printf("Global idleness\n");
-        printf("   min = %.1f\n", min_idleness);
-        printf("   avg = %.1f\n", gavg);
-        printf("   stddev = %.1f\n", gstddev);
-        printf("   max = %.1f\n", max_idleness);
-
-        printf("\nInterferences\t%u\nInterference rate\t%.2f\nVisits\t%u\nAvg visits per node\t%.1f\nTime Elapsed\t%.1f\nReal Time Elapsed\t%.1f\n",
-            interference_cnt,(float)interference_cnt/duration*60,tot_visits,avg_visits,duration,real_duration);
-        
-        if (timeout_write_results)
-          last_report_time = report_time;
-        else
-          patrol_cnt++;
-        
+                if (timeout_write_results)
+                  last_report_time = report_time;
+                else
+                  patrol_cnt++;
                 
-        double tolerance = 0.025 * avg_graph_idl;  //2.5% tolerance
-        printf ("diff avg_idleness = %.1f\n",fabs(previous_avg_graph_idl - avg_graph_idl));
-        printf ("tolerance = %.1f\n",tolerance);
-        
-        // write results to file
-        if (!timeout_write_results)
-            write_results (avg_idleness, stddev_idleness, number_of_visits, complete_patrol, dimension, 
-                   worst_avg_idleness, avg_graph_idl, median_graph_idl, stddev_graph_idl,
-                   min_idleness, gavg, gstddev, max_idleness,
-                   interference_cnt, tot_visits, avg_visits,
-                   graph_file.c_str(), teamsize_str, duration, real_duration, comm_delay,
-                   resultsfilename);
-        else {
-            /*
-            write_results (avg_idleness, stddev_idleness, number_of_visits, complete_patrol, dimension, 
-                   worst_avg_idleness, avg_graph_idl, median_graph_idl, stddev_graph_idl,
-                   min_idleness, gavg, gstddev, max_idleness,
-                   interference_cnt, tot_visits, avg_visits,
-                   graph_file.c_str(), teamsize_str, duration, real_duration, comm_delay,
-                   resultstimefilename);
-            */
+                        
+                double tolerance = 0.025 * avg_graph_idl;  //2.5% tolerance
+                printf ("diff avg_idleness = %.1f\n",fabs(previous_avg_graph_idl - avg_graph_idl));
+                printf ("tolerance = %.1f\n",tolerance);
+                
+                // write results to file
+                if (!timeout_write_results)
+                    write_results (avg_idleness, stddev_idleness, number_of_visits, complete_patrol, dimension, 
+                           worst_avg_idleness, avg_graph_idl, median_graph_idl, stddev_graph_idl,
+                           min_idleness, gavg, gstddev, max_idleness,
+                           interference_cnt, tot_visits, avg_visits,
+                           graph_file.c_str(), teamsize_str, duration, real_duration, comm_delay,
+                           resultsfilename);
+                else {
+                    /*
+                    write_results (avg_idleness, stddev_idleness, number_of_visits, complete_patrol, dimension, 
+                           worst_avg_idleness, avg_graph_idl, median_graph_idl, stddev_graph_idl,
+                           min_idleness, gavg, gstddev, max_idleness,
+                           interference_cnt, tot_visits, avg_visits,
+                           graph_file.c_str(), teamsize_str, duration, real_duration, comm_delay,
+                           resultstimefilename);
+                    */
 
-            fprintf(resultstimecsvfile,"%.1f;%.1f;%.1f;%.1f;%.1f;%d\n", 
-						 duration,min_idleness,gavg,gstddev,max_idleness,interference_cnt);
-            fflush(resultstimecsvfile);
+                    fprintf(resultstimecsvfile,"%.1f;%.1f;%.1f;%.1f;%.1f;%d\n", 
+        						 duration,min_idleness,gavg,gstddev,max_idleness,interference_cnt);
+                    fflush(resultstimecsvfile);
 
-		}
+        		}
 
-        dolog("main loop - write results begin");
+                dolog("main loop - write results begin");
 
-      } // if ((patrol_cnt == complete_patrol) || timeout_write_results)
-      
+            } // if ((patrol_cnt == complete_patrol) || timeout_write_results)
+          
 
-      dolog("    check - begin");
+            dolog("    check - begin");
 
-      // Check if simulation must be terminated
+// Check if simulation must be terminated
 #if SIMULATE_FOREVER == false
-      dead = check_dead_robots();
-                
-      simrun=true; simabort=false;
-      std::string psimrun, psimabort; bool bsimabort;
-      if (nh.getParam("/simulation_running", psimrun))
-          if (psimrun=="false")
-              simrun = false;
-      if (nh.getParam("/simulation_abort", psimabort))
-          if (psimabort=="true")
-              simabort = true;
-      if (nh.getParam("/simulation_abort", bsimabort))
-          simabort = bsimabort;
-        
-      if ( (dead) || (!simrun) || (simabort) ) {
-          printf ("Simulation is Over\n");                
-          nh.setParam("/simulation_running", false);
-          finish_simulation ();
-          ros::spinOnce();
-          break;
-      }
+            dead = check_dead_robots();
+                    
+            simrun=true; simabort=false;
+            std::string psimrun, psimabort; bool bsimabort;
+            if (nh.getParam("/simulation_running", psimrun))
+              if (psimrun=="false")
+                  simrun = false;
+            if (nh.getParam("/simulation_abort", psimabort))
+              if (psimabort=="true")
+                  simabort = true;
+            if (nh.getParam("/simulation_abort", bsimabort))
+              simabort = bsimabort;
+
+            if ( (dead) || (!simrun) || (simabort) ) {
+              printf ("Simulation is Over\n");                
+              nh.setParam("/simulation_running", false);
+              finish_simulation ();
+              ros::spinOnce();
+              break;
+            }
 #endif
 
-      dolog("    check - end");
+            dolog("    check - end");
 
-    } // if ! initialize  
+        } // if ! initialize  
     
-    current_time = ros::Time::now().toSec();
-    ros::spinOnce();
-    loop_rate.sleep();
+        current_time = ros::Time::now().toSec();
+        ros::spinOnce();
+        loop_rate.sleep();
 
-    dolog("main loop - end");
-        
-  } // while ros ok
+        dolog("main loop - end");
+            
+    } // while ros ok
 
-  ros::shutdown();
+    ros::shutdown();
 
-  fclose(idlfile);
-  fclose(resultstimecsvfile);
+    fclose(idlfile);
+    fclose(resultstimecsvfile);
 
 
 
@@ -1041,19 +1057,19 @@ int main(int argc, char** argv){  //pass TEAMSIZE GRAPH ALGORITHM
     of1.close();   of2.close();
 #endif
     
-  printf("Monitor closed.\n");
+    printf("Monitor closed.\n");
 
-  dolog("Monitor closed");
+    dolog("Monitor closed");
 
 #if EXTENDED_STAGE
-  sleep(5);
-  char cmd[80];
-  sprintf(cmd, "mv ~/.ros/stage-000003.png %s/%s_stage.png", path4.c_str(),strnow);
-  system(cmd);
-  printf("%s\n",cmd);
-  printf("Screenshot image copied.\n");
-  sleep(3);  
-  dolog("Snapshots done");
+    sleep(5);
+    char cmd[80];
+    sprintf(cmd, "mv ~/.ros/stage-000003.png %s/%s_stage.png", path4.c_str(),strnow);
+    system(cmd);
+    printf("%s\n",cmd);
+    printf("Screenshot image copied.\n");
+    sleep(3);  
+    dolog("Snapshots done");
 #endif
   
 }

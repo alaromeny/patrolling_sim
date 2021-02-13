@@ -42,6 +42,7 @@
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
 #include <nav_msgs/Odometry.h>
+#include <patrolling_sim/GBS_Message.h>
 
 #include "PatrolAgent.h"
 #include "getgraph.h"
@@ -54,12 +55,14 @@ class GBS_Agent: public PatrolAgent {
 
 private:
 
-  double G1, G2;
-  double edge_min;  
-  int NUMBER_OF_ROBOTS;
-  bool arrived;
-  uint vertex_arrived;
-  int robot_arrived;  
+    double G1, G2;
+    double edge_min;  
+    int NUMBER_OF_ROBOTS;
+    bool arrived;
+    uint vertex_arrived;
+    int robot_arrived;  
+    ros::Subscriber gbs_results_sub;
+    ros::Publisher  gbs_results_pub;  
 
 public:
     virtual void init(int argc, char** argv);
@@ -67,52 +70,64 @@ public:
     virtual void send_results();
     virtual void receive_results();    
     virtual void processEvents();
+    virtual void ROS_resultsCB(const patrolling_sim::GBS_Message::ConstPtr& msg);
+    virtual void ROS_receive_results(const patrolling_sim::GBS_Message::ConstPtr& msg);
+    virtual void do_send_ROS_message();
+
 };
 
 
 
 void GBS_Agent::init(int argc, char** argv) {
   
-  PatrolAgent::init(argc,argv);
- 
-  NUMBER_OF_ROBOTS = atoi(argv[3]);
-  arrived = false; 
+    PatrolAgent::init(argc,argv);
+    ros::NodeHandle nh;
+
+    NUMBER_OF_ROBOTS = atoi(argv[3]);
+    arrived = false; 
+
+    /** Define G1 and G2 **/
+    G1 = 0.1;
+
+    //default:
+    G2 = 100.0;
+    edge_min = 1.0;
   
-  /** Define G1 and G2 **/
-  G1 = 0.1;
- 
-  //default:
-  G2 = 100.0;
-  edge_min = 1.0;
+    if (graph_file=="maps/grid/grid.graph") {  
+        if (NUMBER_OF_ROBOTS == 1){G2 = 20.54;}
+        if (NUMBER_OF_ROBOTS == 2){G2 = 17.70;}
+        if (NUMBER_OF_ROBOTS == 4){G2 = 11.15;}
+        if (NUMBER_OF_ROBOTS == 6){G2 = 10.71;}
+        if (NUMBER_OF_ROBOTS == 8){G2 = 10.29;}
+        if (NUMBER_OF_ROBOTS == 12){G2 = 9.13;}
+    
+    }else if (graph_file=="maps/example/example.graph") {
+        if (NUMBER_OF_ROBOTS == 1){G2 = 220.0;}
+        if (NUMBER_OF_ROBOTS == 2){G2 = 180.5;}
+        if (NUMBER_OF_ROBOTS == 4){G2 = 159.3;}
+        if (NUMBER_OF_ROBOTS == 6){G2 = 137.15;}
+        if (NUMBER_OF_ROBOTS == 8 || NUMBER_OF_ROBOTS == 12){G2 = 126.1;}
+        edge_min = 20.0;
+    
+    }else if (graph_file=="maps/cumberland/cumberland.graph") {
+        if (NUMBER_OF_ROBOTS == 1){G2 = 152.0;}
+        if (NUMBER_OF_ROBOTS == 2){G2 = 100.4;}
+        if (NUMBER_OF_ROBOTS == 4){G2 = 80.74;}
+        if (NUMBER_OF_ROBOTS == 6){G2 = 77.0;}
+        if (NUMBER_OF_ROBOTS == 8 || NUMBER_OF_ROBOTS == 12){G2 = 63.5;}    
+        edge_min = 50.0; 
+    }
   
-  if (graph_file=="maps/grid/grid.graph") {  
-    if (NUMBER_OF_ROBOTS == 1){G2 = 20.54;}
-    if (NUMBER_OF_ROBOTS == 2){G2 = 17.70;}
-    if (NUMBER_OF_ROBOTS == 4){G2 = 11.15;}
-    if (NUMBER_OF_ROBOTS == 6){G2 = 10.71;}
-    if (NUMBER_OF_ROBOTS == 8){G2 = 10.29;}
-    if (NUMBER_OF_ROBOTS == 12){G2 = 9.13;}
-    
-  }else if (graph_file=="maps/example/example.graph") {
-    if (NUMBER_OF_ROBOTS == 1){G2 = 220.0;}
-    if (NUMBER_OF_ROBOTS == 2){G2 = 180.5;}
-    if (NUMBER_OF_ROBOTS == 4){G2 = 159.3;}
-    if (NUMBER_OF_ROBOTS == 6){G2 = 137.15;}
-    if (NUMBER_OF_ROBOTS == 8 || NUMBER_OF_ROBOTS == 12){G2 = 126.1;}
-    edge_min = 20.0;
-    
-  }else if (graph_file=="maps/cumberland/cumberland.graph") {
-    if (NUMBER_OF_ROBOTS == 1){G2 = 152.0;}
-    if (NUMBER_OF_ROBOTS == 2){G2 = 100.4;}
-    if (NUMBER_OF_ROBOTS == 4){G2 = 80.74;}
-    if (NUMBER_OF_ROBOTS == 6){G2 = 77.0;}
-    if (NUMBER_OF_ROBOTS == 8 || NUMBER_OF_ROBOTS == 12){G2 = 63.5;}    
-    edge_min = 50.0;
-    
-  }
-  
-  printf("G1 = %f, G2 = %f\n", G1, G2); 
+    printf("G1 = %f, G2 = %f\n", G1, G2); 
+
+    //overwrite the patrolAgent pub and sub with custom messages
+    gbs_results_pub = nh.advertise<patrolling_sim::GBS_Message>("gbs_results", 100);
+    gbs_results_sub = nh.subscribe<patrolling_sim::GBS_Message>("gbs_results", 10,  boost::bind(&GBS_Agent::ROS_resultsCB, this, _1));  
+
+
 }
+
+
 
 // Executed at any cycle when goal is not reached
 void GBS_Agent::processEvents() {
@@ -172,6 +187,44 @@ void GBS_Agent::receive_results() {
     arrived = true;
 }
 
+void GBS_Agent::ROS_resultsCB(const patrolling_sim::GBS_Message::ConstPtr& msg) { 
+     
+    ROS_receive_results(msg);
+    ros::spinOnce();
+  
+}
+
+
+void GBS_Agent::ROS_receive_results(const patrolling_sim::GBS_Message::ConstPtr& msg) {
+    // int16 sender_ID
+    // int16 vertex
+
+    int id_sender = msg->sender_ID;
+    int value = ID_ROBOT;
+    if (value==-1){
+        value=0;
+    }
+    if (id_sender==value){
+        return;
+    }
+    robot_arrived = msg->sender_ID;
+    vertex_arrived = msg->vertex;
+    arrived = true;
+
+    printf("Robot %d processed message from robot %d\n", ID_ROBOT, id_sender); 
+}
+
+void GBS_Agent::do_send_ROS_message() {
+    int value = ID_ROBOT;
+    if (value==-1){value=0;}
+    // [ID,msg_type,vertex]
+    patrolling_sim::GBS_Message msg;
+    msg.sender_ID = value;
+    msg.vertex    = current_vertex;
+
+    gbs_results_pub.publish(msg);
+    ros::spinOnce();
+}
 
 int main(int argc, char** argv) {
 
