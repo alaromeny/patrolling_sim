@@ -45,6 +45,8 @@
 #include <tf/transform_listener.h>
 #include <nav_msgs/Odometry.h>
 #include <std_msgs/Int16MultiArray.h>
+#include <patrolling_sim/Initialize_Message.h>
+#include <patrolling_sim/SEBS_Message.h>
 
 
 #include "getgraph.h"
@@ -91,11 +93,14 @@ protected:
     
     MoveBaseClient *ac; // action client for reaching target goals
     
-    ros::Subscriber odom_sub, positions_sub;
-    ros::Publisher positions_pub;
+    ros::Subscriber odom_sub;
+    ros::Subscriber positions_sub;
+    ros::Publisher  positions_pub;
     ros::Subscriber results_sub;
-    ros::Publisher results_pub;
-    ros::Publisher cmd_vel_pub;
+    ros::Publisher  results_pub;
+    ros::Publisher  cmd_vel_pub;
+    ros::Publisher  initialize_pub;
+    ros::Subscriber initialize_sub;
 
     
 public:
@@ -143,11 +148,13 @@ public:
     void receive_positions();
     virtual void send_results();  // when goal is completed
     virtual void receive_results();  // asynchronous call
+    virtual void do_send_ROS_message();
     void do_send_message(std_msgs::Int16MultiArray &msg);
     void send_interference();
     void positionsCB(const nav_msgs::Odometry::ConstPtr& msg);
     void resultsCB(const std_msgs::Int16MultiArray::ConstPtr& msg);
-    
+    void initCB(const patrolling_sim::Initialize_Message::ConstPtr& msg);
+    void ROS_resultsCB(const patrolling_sim::SEBS_Message::ConstPtr& msg);
     // Must be implemented by sub-classes
     virtual int compute_next_vertex() = 0;
 

@@ -53,6 +53,8 @@
 #include <tf/transform_listener.h>
 #include <std_msgs/Int16MultiArray.h>
 #include <std_msgs/String.h>
+#include <patrolling_sim/Initialize_Message.h>
+
 
 using namespace std;
 
@@ -80,8 +82,8 @@ using std::endl;
 
 typedef unsigned int uint;
 
-ros::Subscriber results_sub;
-ros::Publisher results_pub, screenshot_pub;
+ros::Subscriber results_sub, initialize_sub;
+ros::Publisher results_pub, screenshot_pub, initialize_pub;
 ros::ServiceServer GotoStartPosMethod;
 
 //Initialization:
@@ -164,6 +166,69 @@ void set_last_goal_reached(int k, double val)
   pthread_mutex_unlock(&lock_last_goal_reached);
 }
 
+void initCB(const patrolling_sim::Initialize_Message::ConstPtr& msg) {
+  // int16 sender_ID
+  // int16 initialize
+
+  int id_robot = msg->sender_ID;
+  int initialize_message = msg->initialize;
+
+  if (initialize){ 
+      if (init_robots[id_robot] == false){   //receive init msg: "ID,msg_type,1"
+          printf("Robot [ID = %d] is Active!\n", id_robot);
+          init_robots[id_robot] = true;
+          
+          //Patch D.Portugal (needed to support other simulators besides Stage):
+          double current_time = ros::Time::now().toSec();
+          //initialize last_goal_reached:
+          set_last_goal_reached(id_robot,current_time);
+          
+          cnt++;
+      } 
+      if (cnt==teamsize){
+          
+          // check if robots need to travel to starting positions
+          while(goto_start_pos){ //if or while (?)
+              
+              patrolling_sim::GoToStartPosSrv::Request Req;
+              Req.teamsize.data = teamsize;
+              Req.sleep_between_goals.data = 20; //time in secs to wait before sending goals to each different robot
+              patrolling_sim::GoToStartPosSrv::Response Rep;  
+              
+              ROS_INFO("Sending all robots to starting position.");
+              
+              if (!ros::service::call("/GotoStartPosSrv", Req, Rep)){ //blocking call
+                  ROS_ERROR("Error invoking /GotoStartPosSrv.");  
+                  ROS_ERROR("Sending robots to initial position failed.");
+                  ros::shutdown(); //make sense for while implementation
+                  return;
+              }else{
+                  goto_start_pos = false;
+                  system("rosnode kill GoToStartPos &");  //we don't need the service anymore.
+              }               
+          }
+              
+          printf("All Robots GO!\n");
+          initialize = false;
+              
+          //Clock Reset:
+          time_zero = ros::Time::now().toSec();
+          last_report_time = time_zero; 
+                              
+          time (&real_time_zero);
+          printf("Time zero = %.1f (sim) = %lu (real) \n", time_zero,(long)real_time_zero);
+
+          patrolling_sim::Initialize_Message msg;
+          //this is monitorID
+          msg.sender_ID  = -1;
+          //tell robots it's time to sync
+          msg.initialize = 1;
+          initialize_pub.publish(msg);
+          ros::spinOnce();
+      }
+  }
+}
+
 
 void resultsCB(const std_msgs::Int16MultiArray::ConstPtr& msg) 
 {
@@ -183,69 +248,69 @@ void resultsCB(const std_msgs::Int16MultiArray::ConstPtr& msg)
     int msg_type = vresults[1];  // message type
 
     switch(msg_type) {
-        case INITIALIZE_MSG_TYPE:
-        {
-        if (initialize && vresults[2]==1){ 
-            if (init_robots[id_robot] == false){   //receive init msg: "ID,msg_type,1"
-                printf("Robot [ID = %d] is Active!\n", id_robot);
-                init_robots[id_robot] = true;
+        // case INITIALIZE_MSG_TYPE:
+        // {
+        // if (initialize && vresults[2]==1){ 
+        //     if (init_robots[id_robot] == false){   //receive init msg: "ID,msg_type,1"
+        //         printf("Robot [ID = %d] is Active!\n", id_robot);
+        //         init_robots[id_robot] = true;
                 
-                //Patch D.Portugal (needed to support other simulators besides Stage):
-                double current_time = ros::Time::now().toSec();
-                //initialize last_goal_reached:
-                set_last_goal_reached(id_robot,current_time);
+        //         //Patch D.Portugal (needed to support other simulators besides Stage):
+        //         double current_time = ros::Time::now().toSec();
+        //         //initialize last_goal_reached:
+        //         set_last_goal_reached(id_robot,current_time);
                 
-                cnt++;
-            } 
-            if (cnt==teamsize){
+        //         cnt++;
+        //     } 
+        //     if (cnt==teamsize){
                 
-                // check if robots need to travel to starting positions
-                while(goto_start_pos){ //if or while (?)
+        //         // check if robots need to travel to starting positions
+        //         while(goto_start_pos){ //if or while (?)
                     
-                    patrolling_sim::GoToStartPosSrv::Request Req;
-                    Req.teamsize.data = teamsize;
-                    Req.sleep_between_goals.data = 20; //time in secs to wait before sending goals to each different robot
-                    patrolling_sim::GoToStartPosSrv::Response Rep;	
+        //             patrolling_sim::GoToStartPosSrv::Request Req;
+        //             Req.teamsize.data = teamsize;
+        //             Req.sleep_between_goals.data = 20; //time in secs to wait before sending goals to each different robot
+        //             patrolling_sim::GoToStartPosSrv::Response Rep;	
                     
-                    ROS_INFO("Sending all robots to starting position.");
+        //             ROS_INFO("Sending all robots to starting position.");
                     
-                    if (!ros::service::call("/GotoStartPosSrv", Req, Rep)){ //blocking call
-                        ROS_ERROR("Error invoking /GotoStartPosSrv.");	
-                        ROS_ERROR("Sending robots to initial position failed.");
-                        ros::shutdown(); //make sense for while implementation
-                        return;
+        //             if (!ros::service::call("/GotoStartPosSrv", Req, Rep)){ //blocking call
+        //                 ROS_ERROR("Error invoking /GotoStartPosSrv.");	
+        //                 ROS_ERROR("Sending robots to initial position failed.");
+        //                 ros::shutdown(); //make sense for while implementation
+        //                 return;
                         
-                    }else{
-                        goto_start_pos = false;
-                        system("rosnode kill GoToStartPos &");  //we don't need the service anymore.
-                    }               
+        //             }else{
+        //                 goto_start_pos = false;
+        //                 system("rosnode kill GoToStartPos &");  //we don't need the service anymore.
+        //             }               
                     
-                }
+        //         }
                     
-                printf("All Robots GO!\n");
-                initialize = false;
+        //         printf("All Robots GO!\n");
+        //         initialize = false;
                     
-                //Clock Reset:
-                time_zero = ros::Time::now().toSec();
-                last_report_time = time_zero; 
+        //         //Clock Reset:
+        //         time_zero = ros::Time::now().toSec();
+        //         last_report_time = time_zero; 
                                     
-                time (&real_time_zero);
-                printf("Time zero = %.1f (sim) = %lu (real) \n", time_zero,(long)real_time_zero);
+        //         time (&real_time_zero);
+        //         printf("Time zero = %.1f (sim) = %lu (real) \n", time_zero,(long)real_time_zero);
 
-                std_msgs::Int16MultiArray msg;  // -1,msg_type,100,0,0
-                msg.data.clear();
-                msg.data.push_back(-1);
-                msg.data.push_back(INITIALIZE_MSG_TYPE);
-                msg.data.push_back(100);  // Go !!!
-                results_pub.publish(msg);
-                ros::spinOnce();      
+        //         // std_msgs::Int16MultiArray msg;  // -1,msg_type,100,0,0
+        //         // msg.data.clear();
+        //         // msg.data.push_back(-1);
+        //         // msg.data.push_back(INITIALIZE_MSG_TYPE);
+        //         // msg.data.push_back(100);  // Go !!!
+        //         // results_pub.publish(msg);
+        //         ros::spinOnce();      
                 
-                }
-            }
+        //         }
+        //     }
             
-        //}
-        break;
-        }
+        // //}
+        // break;
+        // }
         
         case TARGET_REACHED_MSG_TYPE:
         {
@@ -284,7 +349,7 @@ void finish_simulation (){ //-1,msg_type,999,0,0
   msg.data.push_back(-1);
   msg.data.push_back(INITIALIZE_MSG_TYPE);
   msg.data.push_back(999);  // end of the simulation
-  results_pub.publish(msg);
+  // results_pub.publish(msg);
   ros::spinOnce();  
 
 #if EXTENDED_STAGE  
@@ -766,12 +831,22 @@ int main(int argc, char** argv){  //pass TEAMSIZE GRAPH ALGORITHM
   ros::init(argc, argv, "monitor");
   ros::NodeHandle nh;
   
-  //Subscribe "results" from robots
-  results_sub = nh.subscribe("results", 100, resultsCB);   
+  initialize_sub = nh.subscribe("/initialize", 100, initCB); 
+  initialize_pub = nh.advertise<patrolling_sim::Initialize_Message>("/initialize", 100);
   
-  //Publish data to "results"
-  results_pub = nh.advertise<std_msgs::Int16MultiArray>("results", 100);
+
+  // //Subscribe "results" from robots
+  // results_sub = nh.subscribe("results", 100, resultsCB);   
+  // //Publish data to "results"
+  // results_pub = nh.advertise<std_msgs::Int16MultiArray>("results", 100);
   
+  // //Subscribe "results" from robots
+  // results_sub = nh.subscribe("results", 100, resultsCB);   
+  // //Publish data to "results"
+  // results_pub = nh.advertise<patrolling_sim::SEBS_Message>("results", 100);
+
+
+
 #if EXTENDED_STAGE  
   screenshot_pub = nh.advertise<std_msgs::String>("/stageGUIRequest", 100);
 #endif    

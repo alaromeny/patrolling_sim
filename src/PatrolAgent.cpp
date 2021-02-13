@@ -45,6 +45,8 @@
 #include <tf/transform_listener.h>
 #include <nav_msgs/Odometry.h>
 #include <std_srvs/Empty.h>
+#include <patrolling_sim/Initialize_Message.h>
+#include <patrolling_sim/SEBS_Message.h>
 
 #include "PatrolAgent.h"
 
@@ -164,9 +166,14 @@ void PatrolAgent::init(int argc, char** argv) {
         //ROS_INFO("last_visit[%d]=%f", i, last_visit[i]);
     }
         
+
+    //shared memory where robots coordinate the start of the simulation
+    initialize_pub = nh.advertise<patrolling_sim::Initialize_Message>("/initialize", 10); //only concerned about the most recent   
+    initialize_sub = nh.subscribe<patrolling_sim::Initialize_Message>("/initialize", 100, boost::bind(&PatrolAgent::initCB, this, _1));
+
+
     //Publicar dados de "odom" para nó de posições
-    positions_pub = nh.advertise<nav_msgs::Odometry>("positions", 1); //only concerned about the most recent
-        
+    positions_pub = nh.advertise<nav_msgs::Odometry>("positions", 1); //only concerned about the most recent   
     //Subscrever posições de outros robots
     positions_sub = nh.subscribe<nav_msgs::Odometry>("positions", 10, boost::bind(&PatrolAgent::positionsCB, this, _1));  
     
@@ -350,7 +357,8 @@ void PatrolAgent::onGoalComplete()
 
     /** SEND GOAL (REACHED) AND INTENTION **/
     send_goal_reached(); // Send TARGET to monitor
-    send_results();  // Algorithm specific function
+    // send_results();  // Algorithm specific function
+    do_send_ROS_message();
 
     //Send the goal to the robot (Global Map)
     ROS_INFO("Sending goal - Vertex %d (%f,%f)\n", next_vertex, vertex_web[next_vertex].x, vertex_web[next_vertex].y);
@@ -419,20 +427,19 @@ void PatrolAgent::initialize_node (){ //ID,msg_type,1
     if (value==-1){value=0;}
     ROS_INFO("Initialize Node: Robot %d",value); 
     
-    std_msgs::Int16MultiArray msg;   
-    msg.data.clear();
-    msg.data.push_back(value);
-    msg.data.push_back(INITIALIZE_MSG_TYPE);
-    msg.data.push_back(1);  // Robot initialized
-    
+    patrolling_sim::Initialize_Message msg;
+    msg.sender_ID  = value;
+    msg.initialize = 1;
+
     int count = 0;
     
     //ATENÇÃO ao PUBLICADOR!
     ros::Rate loop_rate(0.5); //meio segundo
     
     while (count<3){ //send activation msg 3times
-        results_pub.publish(msg);
-        //ROS_INFO("publiquei msg: %s\n", msg.data.c_str());
+        //publish to initialise topic
+        //used to sync all robots
+        initialize_pub.publish(msg);
         ros::spinOnce();
         loop_rate.sleep();
         count++;
@@ -777,6 +784,10 @@ void PatrolAgent::send_results() {
 
 }
 
+void PatrolAgent::do_send_ROS_message() { 
+
+}
+
 // simulates blocking send operation with delay in communication
 void PatrolAgent::do_send_message(std_msgs::Int16MultiArray &msg) {
 	if (communication_delay>0.001) {
@@ -813,7 +824,35 @@ void PatrolAgent::send_interference(){
     ros::spinOnce();
 }
 
+void PatrolAgent::initCB(const patrolling_sim::Initialize_Message::ConstPtr& msg){
+    // int16 sender_ID
+    // int16 initialize
 
+
+    int id_robot = msg->sender_ID;
+    int initialize_message = msg->initialize;
+
+    ROS_INFO("Init Callback message from %d\n", id_robot);
+
+
+    // only care about messages coming from the monitor
+    if (id_robot==-1) {
+        if (initialize==true && initialize_message==1) {   //"-1,msg_type,100,seq_flag" (BEGINNING)
+            ROS_INFO("Let's Patrol!\n");
+            double r = 1.0 * ((rand() % 1000)/1000.0);
+
+            //TODO if sequential start
+            //r = DELTA_TIME_SEQUENTIAL_START * ID_ROBOT;
+
+            ros::Duration wait(r); // seconds
+
+            printf("Wait %.1f seconds (init pos:%s)\n",r,initial_positions.c_str());
+
+            wait.sleep();
+            initialize = false;
+        }   
+    }
+}
 
 
 void PatrolAgent::resultsCB(const std_msgs::Int16MultiArray::ConstPtr& msg) { 
@@ -884,4 +923,8 @@ void PatrolAgent::resultsCB(const std_msgs::Int16MultiArray::ConstPtr& msg) {
 
     ros::spinOnce();
   
+}
+
+void PatrolAgent::ROS_resultsCB(const patrolling_sim::SEBS_Message::ConstPtr& msg) { 
+    
 }

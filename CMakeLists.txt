@@ -51,10 +51,11 @@ find_package(catkin REQUIRED COMPONENTS
 ## Generate messages in the 'msg' folder
  add_message_files(
    FILES
-   GBS_Message.msg
-   SEBS_Message.msg
    DTAGreedy_Message.msg
    DTAP_Message.msg
+   Initialize_Message.msg
+   GBS_Message.msg
+   SEBS_Message.msg
  )
 
 ## Generate services in the 'srv' folder

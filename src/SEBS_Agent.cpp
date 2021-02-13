@@ -65,6 +65,8 @@ private:
   bool intention;
   uint vertex_intention;
   int robot_intention;  
+  ros::Subscriber seb_results_sub;
+  ros::Publisher  seb_results_pub;
       
 public:
     virtual void init(int argc, char** argv);
@@ -72,6 +74,7 @@ public:
     virtual void processEvents();
     virtual void send_results();
     virtual void do_send_ROS_message();
+    virtual void ROS_resultsCB(const patrolling_sim::SEBS_Message::ConstPtr& msg);
     virtual void receive_results();    
 };
 
@@ -79,6 +82,7 @@ public:
 void SEBS_Agent::init(int argc, char** argv) {
   
   PatrolAgent::init(argc,argv);
+  ros::NodeHandle nh;
   
   NUMBER_OF_ROBOTS = atoi(argv[3]);
   arrived=false;
@@ -131,6 +135,11 @@ void SEBS_Agent::init(int argc, char** argv) {
   for (int i=0; i<NUMBER_OF_ROBOTS; i++){
     tab_intention[i] = -1;
   }
+
+
+  //overwrite the patrolAgent pub and sub with custom messages
+  seb_results_pub = nh.advertise<patrolling_sim::SEBS_Message>("seb_results", 100);
+  seb_results_sub = nh.subscribe<patrolling_sim::SEBS_Message>("seb_results", 10,  boost::bind(&SEBS_Agent::ROS_resultsCB, this, _1));  
   
 }
 
@@ -188,11 +197,27 @@ void SEBS_Agent::do_send_ROS_message() {
     int value = ID_ROBOT;
     if (value==-1){value=0;}
     // [ID,msg_type,vertex,intention]
-
+    patrolling_sim::SEBS_Message msg;
+    msg.sender_ID = value;
+    msg.vertex    = current_vertex;
+    msg.intention = next_vertex;
    
-    // results_pub.publish(msg);
+
+
+    seb_results_pub.publish(msg);
     ros::spinOnce();
 }
+
+
+void SEBS_Agent::ROS_resultsCB(const patrolling_sim::SEBS_Message::ConstPtr& msg) { 
+    
+    printf("Robot Callback %d\n", ID_ROBOT); 
+    
+    ros::spinOnce();
+  
+}
+
+
 
 void SEBS_Agent::receive_results() {
   
