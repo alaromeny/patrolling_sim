@@ -326,11 +326,9 @@ void DTAGreedy_Agent::ROS_resultsCB(const patrolling_sim::DTAGreedy_Message::Con
   
 }
 void DTAGreedy_Agent::ROS_receive_results(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg) {
-
     // int16 sender_ID
     // int16 next_vertex
     // int16[] global_idleness
-
 
     double now = ros::Time::now().toSec();
     int id_sender = msg->sender_ID;
@@ -339,6 +337,7 @@ void DTAGreedy_Agent::ROS_receive_results(const patrolling_sim::DTAGreedy_Messag
     if (value==-1){
         value=0;
     }
+    //Ignore if I sent message
     if (id_sender==value) {
         return;
     }
