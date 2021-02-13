@@ -73,9 +73,13 @@ void SSIPatrolAgent::onGoalComplete()
    }
 
     /** SEND GOAL (REACHED) AND INTENTION **/
-    send_goal_reached(); // Send TARGET to monitor
-    send_results();  // Algorithm specific function
-    
+    // send_goal_reached(); // Send TARGET to monitor
+    // send_results();  // Algorithm specific function
+    //These are the new versions of the commented
+    // out functions above
+    send_target_reached();
+    do_send_ROS_greedyMessage();
+
     //Send the goal to the robot (Global Map)
     ROS_INFO("Sending goal - Vertex %d (%f,%f)\n", next_vertex, vertex_web[next_vertex].x, vertex_web[next_vertex].y);
     //sendGoal(vertex_web[next_vertex].x, vertex_web[next_vertex].y);  
@@ -143,6 +147,7 @@ bool SSIPatrolAgent::all_selected(bool* sv){
 void SSIPatrolAgent::init(int argc, char** argv) {
         
     PatrolAgent::init(argc,argv);
+    ros::NodeHandle nh;
 
     //initialize structures
     next_vertex = -1; 
@@ -179,6 +184,14 @@ void SSIPatrolAgent::init(int argc, char** argv) {
     paramss << timeout << "," << theta_idl << "," << theta_cost << "," << theta_hop << "," << threshold << "," << hist;
 
     ros::param::set("/algorithm_params",paramss.str());
+
+    //this algorithm also relies on the DTAGreedy messages
+    DTAGreedy_results_pub = nh.advertise<patrolling_sim::DTAGreedy_Message>("DTAGreedy_results", 100);
+    DTAGreedy_results_sub = nh.subscribe<patrolling_sim::DTAGreedy_Message>("DTAGreedy_results", 10,  boost::bind(&SSIPatrolAgent::ROS_greedyresultsCB, this, _1));  
+
+
+    DTAP_results_pub = nh.advertise<patrolling_sim::DTAP_Message>("DTAP_results", 100);
+    DTAP_results_sub = nh.subscribe<patrolling_sim::DTAP_Message>("DTAP_results", 10,  boost::bind(&SSIPatrolAgent::ROS_resultsCB, this, _1));  
 
 }
 
@@ -470,7 +483,8 @@ int SSIPatrolAgent::compute_next_vertex(int cv) {
     int value = ID_ROBOT;
     if (value==-1){value=0;}
     force_bid(mnv,bidvalue,value); 
-    send_target(mnv,bidvalue);
+    // send_target(mnv,bidvalue);
+    do_send_ROS_message(mnv,bidvalue, DTASSI_TR);
 #if DEBUG_PRINT    
     printf("DTAP [%.1f] compute_next_vertex: waiting for bids\n",ros::Time::now().toSec());
 #endif
@@ -516,7 +530,9 @@ int SSIPatrolAgent::compute_next_vertex(int cv) {
 			mnv = select_next_vertex(cv,selected_vertices);	
 			bidvalue = compute_bid(mnv); 
 			force_bid(mnv,bidvalue,value); 
-			send_target(mnv,bidvalue);
+			// send_target(mnv,bidvalue);
+            do_send_ROS_message(mnv,bidvalue, DTASSI_TR);
+
 			//printf("  ... waiting for bids (%.2f seconds) ... \n",timeout);
 			wait();
 			/*printf("current target %d current value for target %.2f tasks [",mnv,bidvalue);
@@ -567,7 +583,6 @@ void SSIPatrolAgent::send_target(int nv,double bv) {
 	msg.data.push_back(ibv);
     	
 	do_send_message(msg);   
-    
 }
 
 
@@ -598,14 +613,10 @@ void SSIPatrolAgent::send_bid(int nv,double bv) {
 
 //return true if the robot holds the best bid for nv OR if the vertex is adjacent on the patrol graph, the idleness is much higher than normal and no one else is going to the same vertex
 bool SSIPatrolAgent::greedy_best_bid(int cv, int nv){
-
-
 //	bool my_best = (bids[nv].robotId==ID_ROBOT);
 //	printf("CHECK BEST: bid robot id %d, result: %d \n",bids[nv].robotId,(bids[nv].robotId==ID_ROBOT));
 
-
 	bool adj = (compute_hops(cv,nv) <= 1);
-
 	double avg_idleness = 0.;
 	for(size_t i=0; i<dimension; i++) {
         	avg_idleness += global_instantaneous_idleness[i];
@@ -763,8 +774,10 @@ void SSIPatrolAgent::task_request_msg_handler(std::vector<int>::const_iterator i
 
 //      if (my_bidValue<bv*(1+hist)){
         if (bids[nv].robotId==value){
-//              send_bid(nv,my_bidValue);
-                send_bid(nv,bids[nv].bidValue);
+            // send_bid(nv,my_bidValue);
+            // send_bid(nv,bids[nv].bidValue);
+            do_send_ROS_message(nv,bids[nv].bidValue, DTASSI_BID);
+
         }
 }
 #endif
@@ -810,5 +823,171 @@ void SSIPatrolAgent::receive_results() {
 }
 
 
+void SSIPatrolAgent::do_send_ROS_greedyMessage()  {
+    // int16 sender_ID
+    // int16 next_vertex
+    // int16[] global_idleness
 
+    int value = ID_ROBOT;
+    if (value==-1){value=0;}
+
+    // [ID,msg_type,vertex,intention]
+    patrolling_sim::DTAGreedy_Message msg;
+    msg.sender_ID = value;
+    msg.next_vertex = next_vertex;
+    msg.global_idleness.clear();
+
+
+    for(size_t i=0; i<dimension; i++) {
+        // convert in 1/10 of secs (integer value) Max value 3276.8 second (> 50 minutes) !!!
+        int ms = (int)(global_instantaneous_idleness[i]*10);
+        if (ms>32768) { // Int16 is used to send messages
+            ROS_WARN("Wrong conversion when sending idleness value in messages!!!");
+            ms=32000;
+        }
+        if ((int)i==next_vertex) ms=0;
+        msg.global_idleness.push_back(ms);
+    }
+
+
+    DTAGreedy_results_pub.publish(msg);
+    ros::spinOnce();
+}
+
+
+void SSIPatrolAgent::do_send_ROS_message(int next_vertex, double bid_value, int type) {
+    // int16 sender_ID
+    // int16 bid_not_request
+    // int16 next_vertex_index
+    // int16 bid_value
+
+    int value = ID_ROBOT;
+    if (value==-1){value=0;}
+
+    int int_bid_value = (int)(bid_value);
+    if (int_bid_value>32767) { // Int16 is used to send messages
+        ROS_WARN("Wrong conversion when sending bid value in messages!!!");
+        int_bid_value=32000;
+    }
+
+    // [ID,msg_type,vertex,intention]
+    patrolling_sim::DTAP_Message msg;
+    msg.sender_ID = value;
+    msg.next_vertex_index = next_vertex;
+    msg.bid_value = int_bid_value;
+   
+    if (type == DTASSI_BID){ //Leftover message types
+        msg.bid_not_request = 1;
+    } else if (type == DTASSI_TR) {//Leftover message types
+        msg.bid_not_request = 0;
+    } else {
+        ROS_WARN("Wrong message type!!!");
+        return;
+    }
+    DTAP_results_pub.publish(msg);
+    ros::spinOnce();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+void SSIPatrolAgent::ROS_greedyresultsCB(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg) { 
+    
+    ROS_receive_greedyResults(msg);
+    ros::spinOnce();
+  
+}
+
+void SSIPatrolAgent::ROS_receive_greedyResults(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg) { 
+    // int16 sender_ID
+    // int16 next_vertex
+    // int16[] global_idleness
+
+    int sender_ID = msg->sender_ID;
+    int value = ID_ROBOT;
+    if (value==-1){
+        value=0;
+    }
+    //ignore if I sent message
+    if (sender_ID==value) {
+        return;
+    }
+    //based from idleness_msg_handler()
+    double now = ros::Time::now().toSec();
+    pthread_mutex_lock(&lock);
+    for(size_t i=0; i<dimension; i++) {
+        int ms = msg->global_idleness[i]; // received value
+        double rgi = (double)ms/10.0; // convert back in seconds
+        global_instantaneous_idleness[i] = std::min(
+            global_instantaneous_idleness[i]+(now-last_update_idl), rgi);
+    }
+    pthread_mutex_unlock(&lock);
+    last_update_idl = now;
+    printf("Robot %d processed Greedy message from Robot %d\n", ID_ROBOT, sender_ID); 
+}
+
+void SSIPatrolAgent::ROS_resultsCB(const patrolling_sim::DTAP_Message::ConstPtr& msg) { 
+    
+    ROS_receive_results(msg);
+    ros::spinOnce();
+  
+}
+
+void SSIPatrolAgent::ROS_receive_results(const patrolling_sim::DTAP_Message::ConstPtr& msg) {
+    // int16 sender_ID
+    // int16 bid_not_request
+    // int16 next_vertex_index
+    // int16 bid_value   
+
+    //Open Message contents
+    int sender_ID    = msg->sender_ID;
+    int messageType  = msg->bid_not_request;
+    int next_vertex  = msg->next_vertex_index;
+    double bid_value = msg->bid_value;
+
+    if(messageType > 1 || messageType<0){
+        ROS_WARN("Wrong message type!!!");
+        return; 
+    }
+      
+    int value = ID_ROBOT;
+    if (value==-1){
+        value=0;
+    }
+    
+    //Ignore if I sent Message
+    if (sender_ID==value) {
+        return;
+    }      
+
+
+    
+    update_bids(next_vertex,bid_value,sender_ID);
+
+    if(messageType == 0) {
+        double now = ros::Time::now().toSec();
+        taskRequests[next_vertex] = now;
+        double my_bidValue = compute_bid(next_vertex);
+        // update bids with my value
+        update_bids(next_vertex,my_bidValue,value);  
+        if (bids[next_vertex].robotId==value){
+                // send_bid(next_vertex,bids[next_vertex].bidValue);
+                do_send_ROS_message(next_vertex,bids[next_vertex].bidValue, DTASSI_BID);
+
+        }
+        printf("Robot %d processed Task Request message from Robot %d\n", value, sender_ID); 
+    
+    } else if (msg->bid_not_request == 1) {
+        printf("Robot %d processed Bid Request message from Robot %d\n", value, sender_ID); 
+    }
+}
 

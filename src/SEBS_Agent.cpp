@@ -42,6 +42,7 @@
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
 #include <nav_msgs/Odometry.h>
+#include <patrolling_sim/SEBS_Message.h>
 
 #include "PatrolAgent.h"
 #include "getgraph.h"
@@ -54,69 +55,48 @@ class SEBS_Agent: public PatrolAgent {
 
 private:
 
-  double G1, G2;
-  double edge_min;  
-  int NUMBER_OF_ROBOTS;
-  int *tab_intention;
-  bool arrived;
-  uint vertex_arrived;
-  int robot_arrived;
-  bool intention;
-  uint vertex_intention;
-  int robot_intention;  
+    double G1, G2;
+    double edge_min;  
+    int NUMBER_OF_ROBOTS;
+    int *tab_intention;
+    bool arrived;
+    uint vertex_arrived;
+    int robot_arrived;
+    bool intention;
+    uint vertex_intention;
+    int robot_intention;  
+    ros::Subscriber SEBS_results_sub;
+    ros::Publisher  SEBS_results_pub;
       
 public:
     virtual void init(int argc, char** argv);
     virtual int compute_next_vertex();
     virtual void processEvents();
     virtual void send_results();
-    virtual void receive_results();    
+    virtual void do_send_ROS_message();
+    virtual void ROS_resultsCB(const patrolling_sim::SEBS_Message::ConstPtr& msg);
+    virtual void receive_results();
+    virtual void ROS_receive_results(const patrolling_sim::SEBS_Message::ConstPtr& msg);
 };
 
 
 void SEBS_Agent::init(int argc, char** argv) {
   
-  PatrolAgent::init(argc,argv);
-  
-  NUMBER_OF_ROBOTS = atoi(argv[3]);
-  arrived=false;
-  intention=false;
-  
-  /** Define G1 and G2 **/
-  G1 = 0.1;
- 
-  //default:
-  G2 = 100.0;
-  edge_min = 1.0;
+    PatrolAgent::init(argc,argv);
+    ros::NodeHandle nh;
 
-#if 0
-  if (graph_file=="maps/grid/grid.graph") {  
-    if (NUMBER_OF_ROBOTS == 1){G2 = 20.54;}
-    if (NUMBER_OF_ROBOTS == 2){G2 = 17.70;}
-    if (NUMBER_OF_ROBOTS == 4){G2 = 11.15;}
-    if (NUMBER_OF_ROBOTS == 6){G2 = 10.71;}
-    if (NUMBER_OF_ROBOTS == 8){G2 = 10.29;}
-    if (NUMBER_OF_ROBOTS == 12){G2 = 9.13;}
-    
-  }else if (graph_file=="maps/example/example.graph") {
-    if (NUMBER_OF_ROBOTS == 1){G2 = 220.0;}
-    if (NUMBER_OF_ROBOTS == 2){G2 = 180.5;}
-    if (NUMBER_OF_ROBOTS == 4){G2 = 159.3;}
-    if (NUMBER_OF_ROBOTS == 6){G2 = 137.15;}
-    if (NUMBER_OF_ROBOTS == 8 || NUMBER_OF_ROBOTS == 12){G2 = 126.1;}
-    edge_min = 20.0;
-    
-  }else if (graph_file=="maps/cumberland/cumberland.graph") {
-    if (NUMBER_OF_ROBOTS == 1){G2 = 152.0;}
-    if (NUMBER_OF_ROBOTS == 2){G2 = 100.4;}
-    if (NUMBER_OF_ROBOTS == 4){G2 = 80.74;}
-    if (NUMBER_OF_ROBOTS == 6){G2 = 77.0;}
-    if (NUMBER_OF_ROBOTS == 8 || NUMBER_OF_ROBOTS == 12){G2 = 63.5;}    
-    edge_min = 50.0;    
-  }
-#endif
+    NUMBER_OF_ROBOTS = atoi(argv[3]);
+    arrived=false;
+    intention=false;
 
-  printf("G1 = %f, G2 = %f\n", G1, G2); 
+    /** Define G1 and G2 **/
+    G1 = 0.1;
+
+    //default:
+    G2 = 100.0;
+    edge_min = 1.0;
+
+    printf("G1 = %f, G2 = %f\n", G1, G2); 
   
     std::stringstream paramss;
     paramss << G1 << "," << G2;
@@ -124,12 +104,17 @@ void SEBS_Agent::init(int argc, char** argv) {
     ros::param::set("/algorithm_params",paramss.str());
 
     
-  //INITIALIZE tab_intention:
-  tab_intention = new int[NUMBER_OF_ROBOTS];
-  for (int i=0; i<NUMBER_OF_ROBOTS; i++){
-    tab_intention[i] = -1;
-  }
-  
+    //INITIALIZE tab_intention:
+    tab_intention = new int[NUMBER_OF_ROBOTS];
+    for (int i=0; i<NUMBER_OF_ROBOTS; i++){
+        tab_intention[i] = -1;
+    }
+
+
+    //pub and sub with custom messages
+    //currently a global topic but want to move this to robot namespace
+    SEBS_results_pub = nh.advertise<patrolling_sim::SEBS_Message>("SEBS_results", 100);
+    SEBS_results_sub = nh.subscribe<patrolling_sim::SEBS_Message>("SEBS_results", 10,  boost::bind(&SEBS_Agent::ROS_resultsCB, this, _1));  
 }
 
 // Executed at any cycle when goal is not reached
@@ -180,6 +165,56 @@ void SEBS_Agent::send_results() {
     msg.data.push_back(next_vertex);    
     do_send_message(msg);
 }
+
+
+void SEBS_Agent::do_send_ROS_message() {
+    // int16 sender_ID
+    // int16 vertex
+    // int16 intention
+    int value = ID_ROBOT;
+    if (value==-1){value=0;}
+    // [ID,msg_type,vertex,intention]
+    patrolling_sim::SEBS_Message msg;
+    msg.sender_ID = value;
+    msg.vertex    = current_vertex;
+    msg.intention = next_vertex;
+   
+    SEBS_results_pub.publish(msg);
+    ros::spinOnce();
+}
+
+
+void SEBS_Agent::ROS_resultsCB(const patrolling_sim::SEBS_Message::ConstPtr& msg) { 
+    
+    ROS_receive_results(msg);
+    ros::spinOnce();
+  
+}
+
+
+void SEBS_Agent::ROS_receive_results(const patrolling_sim::SEBS_Message::ConstPtr& msg) {
+    // int16 sender_ID
+    // int16 vertex
+    // int16 intention
+
+    int id_sender = msg->sender_ID;
+    int value = ID_ROBOT;
+    if (value==-1){value=0;}
+
+    if (id_sender==value){
+      return;
+    }
+        
+    robot_arrived = msg->sender_ID;
+    vertex_arrived = msg->vertex;
+    arrived = true;
+    robot_intention = msg->sender_ID;
+    vertex_intention = msg->intention;
+    intention = true;
+
+    printf("Robot %d processed message from robot %d\n", ID_ROBOT, id_sender); 
+}
+
 
 void SEBS_Agent::receive_results() {
   
