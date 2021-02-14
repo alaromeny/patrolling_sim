@@ -54,6 +54,8 @@ COMMDELAY_DEFAULT = 0.0
 INITPOS_DEFAULT = "default"
 
 MQTTBroker = True
+# this sets the Service level for the MQTT broker
+QoS_Level = 0
 
 # return long name of the algorithm
 def findAlgName(alg):
@@ -145,6 +147,12 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
 #    os.system("rosparam set /lost_message_rate "+LOSTMSGRATE)
     os.system("rosparam set /navigation_module "+NAV_MODULE)
     os.system("rosparam set /initial_positions "+INITPOS)
+    os.system("rosparam set /MQTT_mode "+str(MQTTBroker))
+    os.system("rosparam set /algorithm "+ALG_SHORT)
+    os.system("rosparam set /number_of_robots "+NROBOTS)
+    os.system("rosparam set /MQTT_service_level "+str(QoS_Level))
+
+
 
     cmd = './setinitposes.py '+MAP+' "'+iposes+'"'
     os.system(cmd)
@@ -152,7 +160,9 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
     os.system('sleep 1')
 
     cmd_monitor = 'rosrun patrolling_sim monitor '+MAP+' '+ALG_SHORT+' '+NROBOTS
-    cmd_mqttbroker = 'rosrun patrolling_sim MQTTBroker ' +NROBOTS 
+    remap = ''
+    # results_robot
+
     if (MQTTBroker):
         cmd_monitor = cmd_monitor + ' /results:=results_monitor'
 
@@ -163,7 +173,6 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
     # if (os.getenv('ROS_DISTRO')=='groovy'):
     #   cmd_stage = cmd_stage + " stage_pkg:=stage"
     print cmd_monitor
-    print cmd_mqttbroker
     print cmd_stage
     if (TERM == 'xterm'):
         os.system('xterm -e  "'+cmd_monitor+'" &') 
@@ -171,13 +180,15 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
     else: 
         os.system('gnome-terminal --tab -e  "bash -c \''+cmd_monitor+'\'" --tab -e "bash -c \''+cmd_stage+'\'" &')
     
+    cmd_mqttbroker = 'rosrun patrolling_sim MQTTBroker.py'
+    print cmd_mqttbroker
     if (MQTTBroker):
         if (TERM == 'xterm'):
             os.system('xterm -e  "'+cmd_mqttbroker+'" &') 
         else: 
             os.system('gnome-terminal --tab -e  "bash -c \''+cmd_mqttbroker+'\'" &')
 
-
+    
     os.system('sleep 3')
     
     # Start robots
@@ -211,21 +222,31 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
         
     # Start patrol behaviors
     gcmd = 'gnome-terminal '
+    remap = ''
+    print 'ALG_SHORT'
+    print ALG_SHORT
     for i in range(0,int(NROBOTS)):
         print 'Run patrol robot ',i
+        if (MQTTBroker and (ALG_SHORT == 'GBS' or ALG_SHORT == 'SEBS' or ALG_SHORT == 'DTAG')):
+            remap = ' /'+ALG_SHORT+'_results_IN:=/MQTT/robot'+str(i)+'/'+ALG_SHORT+'_results_IN '
+            remap = remap+ ' /'+ALG_SHORT+'_results_OUT:=/MQTT/robot'+str(i)+'/'+ALG_SHORT+'_results_OUT '
+        elif(MQTTBroker and ALG_SHORT == 'DTAP'):
+            remap = ' /DTAP_results_IN:=/MQTT/robot'+str(i)+'/DTAP_results_IN '
+            remap = remap +' /DTAP_results_OUT:=/MQTT/robot'+str(i)+'/DTAP_results_OUT '
+            remap = remap +' /DTAG_results_IN:=/MQTT/robot'+str(i)+'/DTAG_results_IN '
+            remap = remap +' /DTAG_results_OUT:=/MQTT/robot'+str(i)+'/DTAG_results_OUT '
+        elif(MQTTBroker):
+            remap = ' /results:=results_robot'+str(i)+' '
+        print remap
         if (ALG_SHORT=='MSP'):
-            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' MSP/'+MAP+'/'+MAP+'_'+str(NROBOTS)+'_'+str(i)+' '+'\''
+            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' MSP/'+MAP+'/'+MAP+'_'+str(NROBOTS)+'_'+str(i)+' '+remap+'\''            
         elif (ALG_SHORT=='GBS' or ALG_SHORT=='SEBS' or ALG_SHORT=='CBLS'):
-            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' '+str(NROBOTS)+'\''
+            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' '+str(NROBOTS)+' '+remap+'\''
         else:
             now = datetime.datetime.now()
             dateString = now.strftime("%Y-%m-%d-%H:%M")
-            #cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' > logs/'+ALG+'-'+dateString+'-robot'+str(i)+'.log \''
-            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+'\''
+            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' '+remap+'\''
         
-        if (MQTTBroker):
-            cmd = 'bash -c \'rosrun patrolling_sim '+ALG+' __name:=patrol_robot'+str(i)+' '+MAP+' '+str(i)+' /results:=results_robot'+str(i)+'\''
-
         print cmd
         if (TERM == 'xterm'):
 	  os.system('xterm -e  "'+cmd+'" &')
@@ -241,6 +262,10 @@ def run_experiment(MAP, NROBOTS, INITPOS, ALG_SHORT, LOC_MODE, NAV_MODULE, GWAIT
     os.system('rostopic pub /stageGUIRequest std_msgs/String "data: \'footprints\'"  --once')
     os.system('rostopic pub /stageGUIRequest std_msgs/String "data: \'speedup_%.1f\'"  --once' %(SPEEDUP))
     #os.system('rm ~/.ros/stage-000003.png')
+
+
+    # needs to start after robots are launched as dynamically grabs their topics
+
 
     now = datetime.datetime.now()
     strinittime = now.strftime("%Y%m%d_%H%M%S")

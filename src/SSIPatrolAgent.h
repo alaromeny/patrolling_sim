@@ -46,7 +46,7 @@
 #include <std_msgs/Int16MultiArray.h>
 #include <algorithm>
 #include <stdio.h>
-#include <patrolling_sim/DTAGreedy_Message.h>
+#include <patrolling_sim/DTAG_Message.h>
 #include <patrolling_sim/DTAP_Message.h>
 
 #include "PatrolAgent.h"
@@ -75,8 +75,8 @@ protected:
 
     //to attach DTAP specific topic
     
-    ros::Publisher  DTAP_results_pub, DTAGreedy_results_pub;
-    ros::Subscriber DTAP_results_sub, DTAGreedy_results_sub;
+    ros::Publisher  DTAP_results_pub, DTAG_results_pub;
+    ros::Subscriber DTAP_results_sub, DTAG_results_sub;
 
     
 	//true if I am selecting the first vertex to go to	
@@ -197,9 +197,9 @@ protected:
 
     virtual void do_send_ROS_message(int next_vertex, double bid_value, int type);
     virtual void do_send_ROS_greedyMessage();
-    virtual void ROS_greedyresultsCB(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg);
+    virtual void ROS_greedyresultsCB(const patrolling_sim::DTAG_Message::ConstPtr& msg);
     virtual void ROS_resultsCB(const patrolling_sim::DTAP_Message::ConstPtr& msg);
-    virtual void ROS_receive_greedyResults(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg);
+    virtual void ROS_receive_greedyResults(const patrolling_sim::DTAG_Message::ConstPtr& msg);
     virtual void ROS_receive_results(const patrolling_sim::DTAP_Message::ConstPtr& msg);
 
 

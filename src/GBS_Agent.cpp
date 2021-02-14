@@ -43,10 +43,12 @@
 #include <tf/transform_listener.h>
 #include <nav_msgs/Odometry.h>
 #include <patrolling_sim/GBS_Message.h>
+#include <patrolling_sim/MQTT_Message.h>
 
 #include "PatrolAgent.h"
 #include "getgraph.h"
 #include "algorithms.h"
+#include "mqtt_types.h"
 
 
 using namespace std;
@@ -59,6 +61,7 @@ private:
     double edge_min;  
     int NUMBER_OF_ROBOTS;
     bool arrived;
+    bool MQTT_mode;
     uint vertex_arrived;
     int robot_arrived;  
     ros::Subscriber gbs_results_sub;
@@ -67,12 +70,24 @@ private:
 public:
     virtual void init(int argc, char** argv);
     virtual int compute_next_vertex();
+    //original function
     virtual void send_results();
-    virtual void receive_results();    
+    //needed for new message type
+    virtual void do_send_ROS_message();
+    //needed for MQTT mode
+    virtual void do_send_MQTT_message();
+
+    //original function
+    virtual void receive_results();
+    //needed for new message type
+    virtual void receive_results(const patrolling_sim::GBS_Message::ConstPtr& msg);
+    //needed for MQTT mode
+    virtual void receive_results(patrolling_sim::GBS_Message* msg);
     virtual void processEvents();
     virtual void ROS_resultsCB(const patrolling_sim::GBS_Message::ConstPtr& msg);
-    virtual void ROS_receive_results(const patrolling_sim::GBS_Message::ConstPtr& msg);
-    virtual void do_send_ROS_message();
+    virtual void MQTT_resultsCB(const patrolling_sim::MQTT_Message::ConstPtr& msg);
+    virtual void MQTT_handler(const patrolling_sim::MQTT_Message::ConstPtr& msg);
+
 
 };
 
@@ -82,6 +97,8 @@ void GBS_Agent::init(int argc, char** argv) {
   
     PatrolAgent::init(argc,argv);
     ros::NodeHandle nh;
+
+    MQTT_mode = getMQTTMode();
 
     NUMBER_OF_ROBOTS = atoi(argv[3]);
     arrived = false; 
@@ -120,10 +137,16 @@ void GBS_Agent::init(int argc, char** argv) {
   
     printf("G1 = %f, G2 = %f\n", G1, G2); 
 
-    //overwrite the patrolAgent pub and sub with custom messages
-    gbs_results_pub = nh.advertise<patrolling_sim::GBS_Message>("gbs_results", 100);
-    gbs_results_sub = nh.subscribe<patrolling_sim::GBS_Message>("gbs_results", 10,  boost::bind(&GBS_Agent::ROS_resultsCB, this, _1));  
+    if(MQTT_mode){
+        gbs_results_pub = nh.advertise<patrolling_sim::MQTT_Message>("GBS_results_OUT", 100);
+        gbs_results_sub = nh.subscribe<patrolling_sim::MQTT_Message>("GBS_results_IN", 10,  boost::bind(&GBS_Agent::MQTT_resultsCB, this, _1));  
+    } else {
+        gbs_results_pub = nh.advertise<patrolling_sim::GBS_Message>("GBS_results", 100);
+        gbs_results_sub = nh.subscribe<patrolling_sim::GBS_Message>("GBS_results", 10,  boost::bind(&GBS_Agent::ROS_resultsCB, this, _1));  
+    }
 
+    //overwrite the patrolAgent pub and sub with custom messages
+    
 
 }
 
@@ -189,13 +212,19 @@ void GBS_Agent::receive_results() {
 
 void GBS_Agent::ROS_resultsCB(const patrolling_sim::GBS_Message::ConstPtr& msg) { 
      
-    ROS_receive_results(msg);
+    receive_results(msg);
     ros::spinOnce();
   
 }
 
+void GBS_Agent::MQTT_resultsCB(const patrolling_sim::MQTT_Message::ConstPtr& msg) { 
+     
+    MQTT_handler(msg);
+    ros::spinOnce();  
+}
 
-void GBS_Agent::ROS_receive_results(const patrolling_sim::GBS_Message::ConstPtr& msg) {
+
+void GBS_Agent::receive_results(const patrolling_sim::GBS_Message::ConstPtr& msg) {
     // int16 sender_ID
     // int16 vertex
 
@@ -212,6 +241,75 @@ void GBS_Agent::ROS_receive_results(const patrolling_sim::GBS_Message::ConstPtr&
     arrived = true;
 
     printf("Robot %d processed message from robot %d\n", ID_ROBOT, id_sender); 
+}
+
+void GBS_Agent::receive_results(patrolling_sim::GBS_Message* msg) {
+    // int16 sender_ID
+    // int16 vertex
+
+    int id_sender = msg->sender_ID;
+    int value = ID_ROBOT;
+    if (value==-1){
+        value=0;
+    }
+    if (id_sender==value){
+        return;
+    }
+    robot_arrived = msg->sender_ID;
+    vertex_arrived = msg->vertex;
+    arrived = true;
+
+    printf("MQTT: Robot %d processed message from robot %d\n", ID_ROBOT, id_sender); 
+}
+
+void GBS_Agent::MQTT_handler(const patrolling_sim::MQTT_Message::ConstPtr& msg) {
+
+    patrolling_sim::GBS_Message data = msg->GBS_Message;
+    receive_results(&data);
+}
+
+
+
+void GBS_Agent::do_send_MQTT_message(){
+    // int16 sender_ID
+    // int16 message_Type
+    // int16 protocol_Type
+    // int16 service_Level
+    // int16 packet_ID
+    // GBS_Message  GBS_Message
+
+    //check we are using MQTT
+    //otherwise ROStopics won't be mapped to correct topic name
+    if (MQTT_mode){
+        int value = ID_ROBOT;
+        if (value==-1){value=0;}
+        // [ID,msg_type,vertex]
+        patrolling_sim::GBS_Message msg;
+        msg.sender_ID = value;
+        msg.vertex    = current_vertex;
+
+        //add GBS message to MQTT packet
+        //and set values
+        patrolling_sim::MQTT_Message mqtt_msg;
+        //who is the original sender
+        //so broker know who is subscibing to this robot
+        //and knows how to communicate for QoS 1 and 2
+        mqtt_msg.sender_ID = value;
+        //sets the MQTT service level for the message
+        mqtt_msg.service_Level = 0;
+        //lets other robots know what message type is contained
+        mqtt_msg.message_Type = GBS_MESSAGE;
+        //lets MQTT broker know this is an unhandled packet
+        mqtt_msg.packet_ID = -1;
+        mqtt_msg.protocol_Type = -1;
+
+        gbs_results_pub.publish(mqtt_msg);
+        ros::spinOnce();
+    } else {
+        ROS_WARN("Tried to send MQTT message but MQTT param set to false");
+        return;
+    }
+
 }
 
 void GBS_Agent::do_send_ROS_message() {

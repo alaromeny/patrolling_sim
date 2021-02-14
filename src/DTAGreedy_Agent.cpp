@@ -45,7 +45,7 @@
 #include <tf/transform_listener.h>
 #include <nav_msgs/Odometry.h>
 #include <std_msgs/Int16MultiArray.h>
-#include <patrolling_sim/DTAGreedy_Message.h>
+#include <patrolling_sim/DTAG_Message.h>
 
 #include "PatrolAgent.h"
 #include "algorithms.h"
@@ -61,8 +61,8 @@ private:
     double theta_idl, theta_cost, theta_odist;
     float origin_x, origin_y, origin_theta;
     pthread_mutex_t lock;
-    ros::Subscriber DTAGreedy_results_sub;
-    ros::Publisher  DTAGreedy_results_pub;
+    ros::Subscriber DTAG_results_sub;
+    ros::Publisher  DTAG_results_pub;
 
     
 public:
@@ -77,8 +77,8 @@ public:
     virtual void send_results();
     virtual void receive_results();   
     virtual void do_send_ROS_message();
-    virtual void ROS_resultsCB(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg); 
-    virtual void ROS_receive_results(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg);
+    virtual void ROS_resultsCB(const patrolling_sim::DTAG_Message::ConstPtr& msg); 
+    virtual void ROS_receive_results(const patrolling_sim::DTAG_Message::ConstPtr& msg);
     
     double compute_cost(int vertex);
     double distanceFromOrigin(int vertex);
@@ -116,8 +116,8 @@ void DTAGreedy_Agent::init(int argc, char** argv) {
     ROS_INFO("Robot %d: Initial pose %.1f %.1f %.1f",value,origin_x, origin_y, origin_theta);
     
     //overwrite the patrolAgent pub and sub with custom messages
-    DTAGreedy_results_pub = nh.advertise<patrolling_sim::DTAGreedy_Message>("DTAG_results", 100);
-    DTAGreedy_results_sub = nh.subscribe<patrolling_sim::DTAGreedy_Message>("DTAG_results", 10,  boost::bind(&DTAGreedy_Agent::ROS_resultsCB, this, _1));  
+    DTAG_results_pub = nh.advertise<patrolling_sim::DTAG_Message>("DTAG_results", 100);
+    DTAG_results_sub = nh.subscribe<patrolling_sim::DTAG_Message>("DTAG_results", 10,  boost::bind(&DTAGreedy_Agent::ROS_resultsCB, this, _1));  
   
 }
 
@@ -297,7 +297,7 @@ void DTAGreedy_Agent::do_send_ROS_message() {
     if (value==-1){value=0;}
 
     // [ID,msg_type,vertex,intention]
-    patrolling_sim::DTAGreedy_Message msg;
+    patrolling_sim::DTAG_Message msg;
     msg.sender_ID = value;
     msg.next_vertex = next_vertex;
     msg.global_idleness.clear();
@@ -315,17 +315,17 @@ void DTAGreedy_Agent::do_send_ROS_message() {
     }
 
 
-    DTAGreedy_results_pub.publish(msg);
+    DTAG_results_pub.publish(msg);
     ros::spinOnce();
 }
 
-void DTAGreedy_Agent::ROS_resultsCB(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg) { 
+void DTAGreedy_Agent::ROS_resultsCB(const patrolling_sim::DTAG_Message::ConstPtr& msg) { 
     
     ROS_receive_results(msg);
     ros::spinOnce();
   
 }
-void DTAGreedy_Agent::ROS_receive_results(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg) {
+void DTAGreedy_Agent::ROS_receive_results(const patrolling_sim::DTAG_Message::ConstPtr& msg) {
     // int16 sender_ID
     // int16 next_vertex
     // int16[] global_idleness

@@ -35,6 +35,13 @@
 * Author: Luca Iocchi (2014-2016)
 *********************************************************************/
 
+//MQTT Message types
+#define DTAG_MESSAGE 50
+#define DTAP_MESSAGE 51
+#define GBS_MESSAGE 52
+#define SEBS_MESSAGE 53
+
+
 // Message types
 #define INITIALIZE_MSG_TYPE 10
 #define TARGET_REACHED_MSG_TYPE 11
@@ -50,4 +57,5 @@
 // Message types for DTASSI algorithm
 #define DTASSI_TR 41 //Task request, msg format: [ID_ROBOT,msg_type,next_vertex_index,bid_value]
 #define DTASSI_BID 42 //Bid Message, msg format: [ID_ROBOT,msg_type,next_vertex_index,bid_value]
+
 

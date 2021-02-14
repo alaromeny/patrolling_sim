@@ -51,11 +51,12 @@ find_package(catkin REQUIRED COMPONENTS
 ## Generate messages in the 'msg' folder
  add_message_files(
    FILES
-   DTAGreedy_Message.msg
+   DTAG_Message.msg
    DTAP_Message.msg
    Initialize_Message.msg
    Interference_Message.msg
    GBS_Message.msg
+   MQTT_Message.msg
    SEBS_Message.msg
    TargetReached_Message.msg
  )
@@ -120,6 +121,7 @@ add_library(PatrolAgent
 add_library(SSIPatrolAgent
   src/SSIPatrolAgent.cpp
 )
+
 
 ## Declare a cpp executable
 add_executable(Conscientious_Reactive src/Conscientious_Reactive_Agent.cpp)
@@ -190,6 +192,13 @@ add_dependencies(monitor ${PROJECT_NAME}_gencpp)
 ## Specify libraries to link a library or executable target against
 target_link_libraries(monitor ${catkin_LIBRARIES})
 
+
+## Declare a cpp executable
+#add_executable(MQTTBroker src/MQTTBroker.cpp)
+#add_dependencies(MQTTBroker ${PROJECT_NAME}_gencpp)
+## Specify libraries to link a library or executable target against
+#target_link_libraries(MQTTBroker ${catkin_LIBRARIES})
+
 add_executable(GoToStartPos src/GoToStartPos.cpp)
 add_dependencies(GoToStartPos ${PROJECT_NAME}_gencpp)
 target_link_libraries(GoToStartPos ${catkin_LIBRARIES})
@@ -218,10 +227,10 @@ target_link_libraries(idlHistogram ${catkin_LIBRARIES})
 
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
-# install(PROGRAMS
-#   scripts/my_python_script
-#   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-# )
+ install(PROGRAMS
+   scripts/MQTTBroker.py
+   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+ )
 
 ## Mark executables and/or libraries for installation
 # install(TARGETS patrolling_sim patrolling_sim_node

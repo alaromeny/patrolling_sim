@@ -132,6 +132,12 @@ void PatrolAgent::init(int argc, char** argv) {
 
     ros::init(argc, argv, "patrol_agent");  // will be replaced by __name:=XXXXXX
     ros::NodeHandle nh;
+
+    // std::string global_name, relative_name, default_param;
+    // if (nh.getParam("/MWTT_mode", global_name)){
+    //   ROS_INFO("MQTT MODE PARAM FOUND: %s", global_name.c_str());
+    //   // ROS_INFO(global_name.c_str());
+    // }
     
     // wait a random time (avoid conflicts with other robots starting at the same time...)
     double r = 3.0 * ((rand() % 1000)/1000.0);
@@ -141,7 +147,9 @@ void PatrolAgent::init(int argc, char** argv) {
     double initial_x, initial_y;
     std::vector<double> list;
     nh.getParam("initial_pos", list);
-    
+
+    setMQTTMode();
+
     if (list.empty()){
      ROS_ERROR("No initial positions given: check \"initial_pos\" parameter.");
      ros::shutdown();
@@ -256,6 +264,15 @@ void PatrolAgent::ready() {
 
 }
 
+void PatrolAgent::setMQTTMode() {
+    ros::param::get("/MQTT_mode", MQTT_MODE);
+    ROS_INFO_STREAM("MQTT_mode is set to: " << MQTT_MODE);
+}
+
+bool PatrolAgent::getMQTTMode() {
+    return MQTT_MODE;
+}
+
 
 void PatrolAgent::readParams() {
 
@@ -281,6 +298,13 @@ void PatrolAgent::readParams() {
       //initial_positions = "default";
       ROS_WARN("Cannot read parameter /initial_positions. Using default value '%s'!", initial_positions.c_str());
       //ros::param::set("/initial_pos", initial_positions);
+    }
+
+    if (! ros::param::get("/MQTT_mode", MQTT_MODE)) {
+      //initial_positions = "default";
+      ROS_WARN("Cannot read parameter /initial_positions. Using default value '%d'!", MQTT_MODE);
+      //ros::param::set("/initial_pos", initial_positions);
+      // MQTT_MODE = 0;
     }
 
 }
@@ -375,7 +399,13 @@ void PatrolAgent::onGoalComplete()
     // send_results();  // Algorithm specific function
     //each algorithm extends this function with the message
     //specific to it's algorithm
-    do_send_ROS_message();
+    
+    //check if using MQTT mode or not
+    if (MQTT_MODE){
+        do_send_MQTT_message();        
+    } else {
+        do_send_ROS_message();
+    }
 
     //Send the goal to the robot (Global Map)
     ROS_INFO("Sending goal - Vertex %d (%f,%f)\n", next_vertex, vertex_web[next_vertex].x, vertex_web[next_vertex].y);
@@ -827,6 +857,11 @@ void PatrolAgent::send_results() {
 void PatrolAgent::do_send_ROS_message() { 
 
 }
+
+void PatrolAgent::do_send_MQTT_message() { 
+
+}
+
 
 // simulates blocking send operation with delay in communication
 void PatrolAgent::do_send_message(std_msgs::Int16MultiArray &msg) {

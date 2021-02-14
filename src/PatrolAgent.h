@@ -66,6 +66,7 @@ protected:
     
     int TEAMSIZE;
     int ID_ROBOT;
+    bool MQTT_MODE;
 
     double xPos[NUM_MAX_ROBOTS]; //tabelas de posições (atençao ao index pro caso de 1 so robot)
     double yPos[NUM_MAX_ROBOTS]; //tabelas de posições (atençao ao index pro caso de 1 so robot)
@@ -144,6 +145,9 @@ public:
     
     void onGoalNotComplete(); // what to do when a goal has NOT been reached (aborted)
     
+    //MQTT
+    void setMQTTMode();//sets MQTT based on ROS param and returns value
+    bool getMQTTMode();//returns MQTT param
     // Events
     virtual void onGoalComplete(); // what to do when a goal has been reached
     virtual void processEvents();  // processes algorithm-specific events
@@ -153,8 +157,12 @@ public:
     void receive_positions();
     virtual void send_results();  // when goal is completed
     virtual void receive_results();  // asynchronous call
-    virtual void do_send_ROS_message();
+    //original function
     void do_send_message(std_msgs::Int16MultiArray &msg);
+    //needed for new message types
+    virtual void do_send_ROS_message();
+    //needed for MQTT mode
+    virtual void do_send_MQTT_message();
     void send_interference();
     void send_interference_msg(int sender_ID, int target_ID);
     void positionsCB(const nav_msgs::Odometry::ConstPtr& msg);

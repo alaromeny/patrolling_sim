@@ -186,8 +186,8 @@ void SSIPatrolAgent::init(int argc, char** argv) {
     ros::param::set("/algorithm_params",paramss.str());
 
     //this algorithm also relies on the DTAGreedy messages
-    DTAGreedy_results_pub = nh.advertise<patrolling_sim::DTAGreedy_Message>("DTAGreedy_results", 100);
-    DTAGreedy_results_sub = nh.subscribe<patrolling_sim::DTAGreedy_Message>("DTAGreedy_results", 10,  boost::bind(&SSIPatrolAgent::ROS_greedyresultsCB, this, _1));  
+    DTAG_results_pub = nh.advertise<patrolling_sim::DTAG_Message>("DTAG_results", 100);
+    DTAG_results_sub = nh.subscribe<patrolling_sim::DTAG_Message>("DTAG_results", 10,  boost::bind(&SSIPatrolAgent::ROS_greedyresultsCB, this, _1));  
 
 
     DTAP_results_pub = nh.advertise<patrolling_sim::DTAP_Message>("DTAP_results", 100);
@@ -832,7 +832,7 @@ void SSIPatrolAgent::do_send_ROS_greedyMessage()  {
     if (value==-1){value=0;}
 
     // [ID,msg_type,vertex,intention]
-    patrolling_sim::DTAGreedy_Message msg;
+    patrolling_sim::DTAG_Message msg;
     msg.sender_ID = value;
     msg.next_vertex = next_vertex;
     msg.global_idleness.clear();
@@ -850,7 +850,7 @@ void SSIPatrolAgent::do_send_ROS_greedyMessage()  {
     }
 
 
-    DTAGreedy_results_pub.publish(msg);
+    DTAG_results_pub.publish(msg);
     ros::spinOnce();
 }
 
@@ -900,14 +900,14 @@ void SSIPatrolAgent::do_send_ROS_message(int next_vertex, double bid_value, int 
 
 
 
-void SSIPatrolAgent::ROS_greedyresultsCB(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg) { 
+void SSIPatrolAgent::ROS_greedyresultsCB(const patrolling_sim::DTAG_Message::ConstPtr& msg) { 
     
     ROS_receive_greedyResults(msg);
     ros::spinOnce();
   
 }
 
-void SSIPatrolAgent::ROS_receive_greedyResults(const patrolling_sim::DTAGreedy_Message::ConstPtr& msg) { 
+void SSIPatrolAgent::ROS_receive_greedyResults(const patrolling_sim::DTAG_Message::ConstPtr& msg) { 
     // int16 sender_ID
     // int16 next_vertex
     // int16[] global_idleness
